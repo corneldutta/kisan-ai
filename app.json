@@ -4,11 +4,11 @@
     "slug": "ProjectKisan",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/projectkisan.png",
+    "icon": "./assets/images/projectkisan.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/images/projectkisan.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,14 +21,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/projectkisan.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.jikum1.ProjectKisan"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/images/projectkisan.png"
     },
     "extra": {
       "eas": {

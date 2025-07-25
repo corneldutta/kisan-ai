@@ -210,3 +210,5 @@ __marimo__/
 .qodo
 
 node_modules/
+android/
+.expo/
