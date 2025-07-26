@@ -4,17 +4,17 @@ import { Audio } from 'expo-av';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 export default function TextChatScreen() {
@@ -56,7 +56,7 @@ export default function TextChatScreen() {
     }
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (inputText.trim() === '') return;
 
     const newMessage: Message = {
@@ -70,31 +70,50 @@ export default function TextChatScreen() {
     const userInput = inputText.trim();
     setInputText('');
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: Message = {
+    // Make API call
+    try {
+      const formData = new FormData();
+      formData.append('From', '7619436585'); // Hardcoded phone number as requested
+      formData.append('Body', userInput);
+
+      console.log(userInput);
+
+      const response = await fetch('https://fastapi-service-666271187622.us-central1.run.app/sms', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const responseData = await response.text();
+        const apiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          text: responseData,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        addMessage(apiResponse);
+      } else {
+        const errorResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          text: `Error: ${response.status} - ${response.statusText}`,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        addMessage(errorResponse);
+      }
+    } catch (error) {
+      console.error('API call error:', error);
+      const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
-        text: getAIResponse(userInput),
+        text: `Error: Failed to connect to the API. Please try again.`,
         isUser: false,
         timestamp: new Date(),
       };
-      addMessage(aiResponse);
-    }, 1500);
-  };
-
-  const getAIResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes('crop') || lowerMessage.includes('disease') || lowerMessage.includes('pest')) {
-      return "I can help you identify crop diseases and pests. Can you describe the symptoms you're seeing? You can also use the Image Search feature to take a photo for better analysis.";
-    } else if (lowerMessage.includes('price') || lowerMessage.includes('market') || lowerMessage.includes('sell')) {
-      return "Current market prices in your area: Tomato - ₹25/kg (↑5%), Onion - ₹18/kg (↓2%), Rice - ₹42/kg (stable). Would you like detailed price trends or selling recommendations?";
-    } else if (lowerMessage.includes('scheme') || lowerMessage.includes('subsidy') || lowerMessage.includes('government')) {
-      return "There are several government schemes available for farmers. Popular ones include PM-KISAN, Soil Health Card Scheme, and Pradhan Mantri Fasal Bima Yojana. Which specific scheme are you interested in?";
-    } else {
-      return "I'm here to help with crop diseases, market prices, and government schemes. You can ask me about plant problems, when to sell your crops, or available subsidies. How can I assist you today?";
+      addMessage(errorResponse);
     }
   };
+
+
 
   const switchToVoiceMode = () => {
     router.push('/(tabs)/voice-chat');
