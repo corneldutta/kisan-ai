@@ -28,6 +28,19 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          title: 'Home',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={28} 
+              name="house.fill" 
+              color={focused ? '#31A05F' : '#4B4B4B'} 
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="image-search"
+        options={{
           title: 'Image Search',
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol 

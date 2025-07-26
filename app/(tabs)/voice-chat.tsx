@@ -1,9 +1,14 @@
+import { Message, useConversation } from '@/components/ConversationContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import { useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useRef, useState } from 'react';
 import {
     Alert,
+    Image,
+    Platform,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -12,27 +17,15 @@ import {
     View,
 } from 'react-native';
 
-interface Message {
-  id: string;
-  text: string;
-  isUser: boolean;
-  timestamp: Date;
-  isVoice?: boolean;
-}
-
 export default function VoiceChatScreen() {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: 'Hello! I am your Kisan Mitra. How can I help you today?',
-      isUser: false,
-      timestamp: new Date(),
-    },
-  ]);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const { messages, addMessage } = useConversation();
+  const router = useRouter();
 
   const startRecording = async () => {
     try {
@@ -107,39 +100,88 @@ export default function VoiceChatScreen() {
       await currentRecording.stopAndUnloadAsync();
       const uri = currentRecording.getURI();
       
-      // Simulate voice message processing
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        text: "I heard your question about crop diseases. Let me analyze this...",
-        isUser: true,
-        timestamp: new Date(),
-        isVoice: true,
-      };
-      
-      setMessages(prev => [...prev, newMessage]);
-      
-      // Simulate AI response
-      setTimeout(() => {
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          text: "Based on your description, it sounds like a fungal infection. I recommend using copper-based fungicide. Apply it early morning or evening. Would you like specific product recommendations available in your area?",
-          isUser: false,
+      let audioUri: string | undefined = undefined;
+      if (uri) {
+        if (Platform.OS === 'web') {
+          // On web, use the URI directly (it's a blob/object URL)
+          audioUri = uri;
+        } else {
+          // On native, save to FileSystem
+          const timestamp = Date.now();
+          const audioFileName = `voice_message_${timestamp}.m4a`;
+          const audioDir = `${FileSystem.documentDirectory}audio/`;
+          const audioPath = `${audioDir}${audioFileName}`;
+          const dirInfo = await FileSystem.getInfoAsync(audioDir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
+          }
+          await FileSystem.copyAsync({ from: uri, to: audioPath });
+          audioUri = audioPath;
+        }
+
+        // Add voice message to shared conversation
+        const newMessage: Message = {
+          id: Date.now().toString(),
+          text: "Voice message recorded",
+          isUser: true,
           timestamp: new Date(),
+          isVoice: true,
+          audioUri,
         };
-        setMessages(prev => [...prev, aiResponse]);
-        
-        // Speak the response
-        Speech.speak(aiResponse.text, { language: 'en' });
-      }, 2000);
-      
+        addMessage(newMessage);
+
+        // Simulate AI response
+        setTimeout(() => {
+          const aiResponse: Message = {
+            id: (Date.now() + 1).toString(),
+            text: "I understand your concern about your crops. Based on what you've shared, I recommend checking for common diseases like blight or pest infestations. Would you like me to provide specific treatment recommendations?",
+            isUser: false,
+            timestamp: new Date(),
+          };
+          addMessage(aiResponse);
+          Speech.speak(aiResponse.text, { language: 'en' });
+        }, 2000);
+      }
     } catch (err) {
       console.error('Failed to stop recording', err);
       Alert.alert('Error', 'Failed to stop recording');
     }
   };
 
+  const playAudio = async (audioUri: string) => {
+    try {
+      // Stop any currently playing audio
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
+      soundRef.current = sound;
+      setPlayingAudio(audioUri);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingAudio(null);
+        }
+      });
+
+      await sound.playAsync();
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      Alert.alert('Error', 'Failed to play audio');
+    }
+  };
+
+  const stopAudio = async () => {
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync();
+      soundRef.current = null;
+      setPlayingAudio(null);
+    }
+  };
+
   const switchToTextMode = () => {
-    Alert.alert('Switch to Text', 'Switching to text mode...');
+    router.push('/(tabs)/text-chat');
   };
 
   const handleMenuPress = () => {
@@ -168,6 +210,9 @@ export default function VoiceChatScreen() {
           message.isUser ? styles.userBubble : styles.aiBubble,
         ]}
       >
+        {message.imageUri && (
+          <Image source={{ uri: message.imageUri }} style={styles.messageImage} />
+        )}
         <Text
           style={[
             styles.messageText,
@@ -176,7 +221,28 @@ export default function VoiceChatScreen() {
         >
           {message.text}
         </Text>
-        {message.isVoice && (
+        {message.audioUri && (
+          <TouchableOpacity
+            style={styles.audioButton}
+            onPress={() => {
+              if (playingAudio === message.audioUri) {
+                stopAudio();
+              } else {
+                playAudio(message.audioUri!);
+              }
+            }}
+          >
+            <IconSymbol 
+              name={playingAudio === message.audioUri ? "stop.fill" : "play.fill"} 
+              size={20} 
+              color={message.isUser ? "#FFFFFF" : "#31A05F"} 
+            />
+            <Text style={[styles.audioText, { color: message.isUser ? "#FFFFFF" : "#31A05F" }]}>
+              {playingAudio === message.audioUri ? "Stop" : "Play"}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {message.isVoice && !message.audioUri && (
           <IconSymbol 
             name="speaker.wave.2.fill" 
             size={16} 
@@ -337,6 +403,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     alignSelf: 'flex-end',
   },
+  messageImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
   timestamp: {
     fontSize: 12,
     color: '#4B4B4B',
@@ -396,5 +468,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#D3EDDF',
+  },
+  audioButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    alignSelf: 'flex-end',
+  },
+  audioText: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontFamily: 'System',
   },
 }); 

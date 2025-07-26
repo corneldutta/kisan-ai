@@ -1,7 +1,11 @@
+import { Message, useConversation } from '@/components/ConversationContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useState } from 'react';
+import { Audio } from 'expo-av';
+import { useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
 import {
     Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     SafeAreaView,
@@ -13,23 +17,44 @@ import {
     View,
 } from 'react-native';
 
-interface Message {
-  id: string;
-  text: string;
-  isUser: boolean;
-  timestamp: Date;
-}
-
 export default function TextChatScreen() {
   const [inputText, setInputText] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: 'Hello! I am your Kisan Mitra. How can I help you today?',
-      isUser: false,
-      timestamp: new Date(),
-    },
-  ]);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const { messages, addMessage } = useConversation();
+  const router = useRouter();
+
+  const playAudio = async (audioUri: string) => {
+    try {
+      // Stop any currently playing audio
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
+      soundRef.current = sound;
+      setPlayingAudio(audioUri);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingAudio(null);
+        }
+      });
+
+      await sound.playAsync();
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      Alert.alert('Error', 'Failed to play audio');
+    }
+  };
+
+  const stopAudio = async () => {
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync();
+      soundRef.current = null;
+      setPlayingAudio(null);
+    }
+  };
 
   const sendMessage = () => {
     if (inputText.trim() === '') return;
@@ -41,7 +66,7 @@ export default function TextChatScreen() {
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, newMessage]);
+    addMessage(newMessage);
     const userInput = inputText.trim();
     setInputText('');
 
@@ -53,7 +78,7 @@ export default function TextChatScreen() {
         isUser: false,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, aiResponse]);
+      addMessage(aiResponse);
     }, 1500);
   };
 
@@ -69,6 +94,10 @@ export default function TextChatScreen() {
     } else {
       return "I'm here to help with crop diseases, market prices, and government schemes. You can ask me about plant problems, when to sell your crops, or available subsidies. How can I assist you today?";
     }
+  };
+
+  const switchToVoiceMode = () => {
+    router.push('/(tabs)/voice-chat');
   };
 
   const handleMenuPress = () => {
@@ -97,6 +126,9 @@ export default function TextChatScreen() {
           message.isUser ? styles.userBubble : styles.aiBubble,
         ]}
       >
+        {message.imageUri && (
+          <Image source={{ uri: message.imageUri }} style={styles.messageImage} />
+        )}
         <Text
           style={[
             styles.messageText,
@@ -105,6 +137,35 @@ export default function TextChatScreen() {
         >
           {message.text}
         </Text>
+        {message.audioUri && (
+          <TouchableOpacity
+            style={styles.audioButton}
+            onPress={() => {
+              if (playingAudio === message.audioUri) {
+                stopAudio();
+              } else {
+                playAudio(message.audioUri!);
+              }
+            }}
+          >
+            <IconSymbol 
+              name={playingAudio === message.audioUri ? "stop.fill" : "play.fill"} 
+              size={20} 
+              color={message.isUser ? "#FFFFFF" : "#31A05F"} 
+            />
+            <Text style={[styles.audioText, { color: message.isUser ? "#FFFFFF" : "#31A05F" }]}>
+              {playingAudio === message.audioUri ? "Stop" : "Play"}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {message.isVoice && !message.audioUri && (
+          <IconSymbol 
+            name="speaker.wave.2.fill" 
+            size={16} 
+            color={message.isUser ? "#FFFFFF" : "#4B4B4B"} 
+            style={styles.voiceIcon}
+          />
+        )}
       </View>
       <Text style={styles.timestamp}>
         {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -143,6 +204,13 @@ export default function TextChatScreen() {
 
         {/* Text Input Controls */}
         <View style={styles.inputContainer}>
+          <TouchableOpacity 
+            style={styles.voiceButton} 
+            onPress={switchToVoiceMode}
+          >
+            <IconSymbol name="mic.fill" size={24} color="#31A05F" />
+          </TouchableOpacity>
+          
           <TextInput
             style={styles.textInput}
             value={inputText}
@@ -152,6 +220,7 @@ export default function TextChatScreen() {
             multiline
             maxLength={500}
           />
+          
           <TouchableOpacity
             style={[styles.sendButton, inputText.trim() ? styles.sendButtonActive : {}]}
             onPress={sendMessage}
@@ -302,5 +371,33 @@ const styles = StyleSheet.create({
   },
   sendButtonActive: {
     backgroundColor: '#31A05F',
+  },
+  voiceButton: {
+    padding: 8,
+  },
+  voiceIcon: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+  },
+  messageImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  audioButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#31A05F',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+  audioText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontFamily: 'System',
   },
 }); 
