@@ -11,24 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../utils/constants';
 
 export default function HomeScreen({ navigation }) {
-    const coreFeatures = [
-        {
-            title: 'Whisper Intelligence',
-            subtitle: 'ಪಿಸುಮಾತು ಬುದ್ಧಿವಂತಿಕೆ',
-            icon: 'radio-outline',
-            color: COLORS.INFO,
-            screen: 'WhisperIntelligence',
-        },
-    ];
 
     const serviceFeatures = [
-        {
-            title: 'Voice Assistant',
-            subtitle: 'ಧ್ವನಿ ಸಹಾಯಕ',
-            icon: 'mic-outline',
-            color: COLORS.INFO,
-            screen: 'VoiceAssistant',
-        },
         {
             title: 'Crop Diagnosis',
             subtitle: 'ಬೆಳೆ ರೋಗ ನಿರ್ಣಯ',
@@ -69,34 +53,7 @@ export default function HomeScreen({ navigation }) {
                 )
             },
             // Core Features section
-            {
-                id: 'coreFeatures',
-                type: 'coreFeatures',
-                component: (
-                    <View style={styles.featuresSection}>
-                        <Text style={styles.sectionTitle}>Core</Text>
-                        <Text style={styles.sectionTitleKannada}>ಮೂಲ</Text>
-                        {coreFeatures.map((feature, index) => (
-                            <TouchableOpacity
-                                key={index}
-                                style={[styles.featureCard, { borderLeftColor: feature.color }]}
-                                onPress={() => navigation.navigate(feature.screen)}
-                            >
-                                <View style={styles.featureContent}>
-                                    <View style={[styles.iconContainer, { backgroundColor: feature.color }]}>
-                                        <Ionicons name={feature.icon} size={24} color="white" />
-                                    </View>
-                                    <View style={styles.featureText}>
-                                        <Text style={styles.featureTitle}>{feature.title}</Text>
-                                        <Text style={styles.featureSubtitle}>{feature.subtitle}</Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={20} color={COLORS.TEXT_SECONDARY} />
-                                </View>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                )
-            },
+
             // Services Features section
             {
                 id: 'serviceFeatures',

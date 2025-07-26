@@ -9,8 +9,6 @@ import HomeScreen from './src/screens/HomeScreen';
 import CropDiagnosisScreen from './src/screens/CropDiagnosisScreen';
 import MarketAnalysisScreen from './src/screens/MarketAnalysisScreen';
 import GovernmentSchemesScreen from './src/screens/GovernmentSchemesScreen';
-import VoiceAssistantScreen from './src/screens/VoiceAssistantScreen';
-import WhisperIntelligenceScreen from './src/screens/WhisperIntelligenceScreen';
 
 const Stack = createStackNavigator();
 
@@ -35,16 +33,7 @@ export default function App() {
                     component={HomeScreen}
                     options={{ title: 'Project Kisan' }}
                 />
-                <Stack.Screen
-                    name="WhisperIntelligence"
-                    component={WhisperIntelligenceScreen}
-                    options={{ title: 'Whisper Intelligence' }}
-                />
-                <Stack.Screen
-                    name="VoiceAssistant"
-                    component={VoiceAssistantScreen}
-                    options={{ title: 'Voice Assistant' }}
-                />
+            
                 <Stack.Screen
                     name="CropDiagnosis"
                     component={CropDiagnosisScreen}
