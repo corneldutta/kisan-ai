@@ -1,58 +1,52 @@
 import { useConversation } from '@/components/ConversationContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Camera } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    Image,
     Platform,
     SafeAreaView,
-    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
 
-interface AnalysisResult {
-  disease: string;
-  confidence: number;
-  treatment: string;
-  prevention: string;
-}
-
 export default function ImageSearchScreen() {
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [cameraRef, setCameraRef] = useState<Camera | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
   const { addMessage } = useConversation();
   const router = useRouter();
 
-  useEffect(() => {
-    (async () => {
-      const cameraStatus = await Camera.requestCameraPermissionsAsync();
-      const mediaLibraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      setHasPermission(cameraStatus.status === 'granted' && mediaLibraryStatus.status === 'granted');
-    })();
-  }, []);
-
   const takePicture = async () => {
-    if (cameraRef) {
-      try {
-        const photo = await cameraRef.takePictureAsync({
-          quality: 0.8,
-          base64: false,
-        });
-        setCapturedImage(photo.uri);
-        analyzeImage(photo.uri);
-      } catch (error) {
-        Alert.alert('Error', 'Failed to take picture');
-      }
+    if (!cameraRef.current || isCapturing) return;
+    
+    setIsCapturing(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: false,
+      });
+      
+      // Add image to conversation
+      addMessage({
+        id: Date.now().toString(),
+        text: 'I took a photo of my crop. Can you help me analyze it?',
+        isUser: true,
+        timestamp: new Date(),
+        imageUri: photo.uri,
+      });
+      
+      // Navigate to voice chat
+      router.push('/(tabs)/voice-chat');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to take picture');
+    } finally {
+      setIsCapturing(false);
     }
   };
 
@@ -66,69 +60,25 @@ export default function ImageSearchScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setCapturedImage(result.assets[0].uri);
-        analyzeImage(result.assets[0].uri);
+        // Add image to conversation
+        addMessage({
+          id: Date.now().toString(),
+          text: 'I uploaded a photo of my crop. Can you help me analyze it?',
+          isUser: true,
+          timestamp: new Date(),
+          imageUri: result.assets[0].uri,
+        });
+        
+        // Navigate to voice chat
+        router.push('/(tabs)/voice-chat');
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick image');
     }
   };
 
-  const analyzeImage = (imageUri: string) => {
-    setIsAnalyzing(true);
-    
-    setTimeout(() => {
-      const mockResults: AnalysisResult[] = [
-        {
-          disease: 'Tomato Leaf Blight',
-          confidence: 92,
-          treatment: 'Apply copper-based fungicide (Copper oxychloride) at 2g/L water. Spray during early morning or evening.',
-          prevention: 'Ensure proper air circulation, avoid overhead watering, and remove affected leaves immediately.'
-        },
-        {
-          disease: 'Powdery Mildew',
-          confidence: 87,
-          treatment: 'Use sulfur-based fungicide or neem oil spray. Apply weekly until symptoms disappear.',
-          prevention: 'Maintain proper spacing between plants and avoid high humidity conditions.'
-        },
-        {
-          disease: 'Bacterial Spot',
-          confidence: 78,
-          treatment: 'Use copper-based bactericide. Remove infected plants to prevent spread.',
-          prevention: 'Use certified disease-free seeds and avoid working with wet plants.'
-        }
-      ];
-
-      const randomResult = mockResults[Math.floor(Math.random() * mockResults.length)];
-      setAnalysisResult(randomResult);
-      setIsAnalyzing(false);
-    }, 3000);
-  };
-
-  const postToVoiceChat = () => {
-    if (analysisResult && capturedImage) {
-      // Add the image and analysis to the conversation
-      addMessage({
-        id: Date.now().toString(),
-        text: `I uploaded an image of my crop. The analysis shows: ${analysisResult.disease} (${analysisResult.confidence}% confidence). ${analysisResult.treatment}`,
-        isUser: true,
-        timestamp: new Date(),
-        imageUri: capturedImage,
-      });
-
-      // Navigate to voice chat
-      router.push('/(tabs)/voice-chat');
-    }
-  };
-
-  const resetCamera = () => {
-    setCapturedImage(null);
-    setAnalysisResult(null);
-    setIsAnalyzing(false);
-  };
-
   // Show permission request
-  if (hasPermission === false) {
+  if (permission && !permission.granted) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -143,9 +93,9 @@ export default function ImageSearchScreen() {
 
         <View style={styles.centered}>
           <IconSymbol name="camera.fill" size={64} color="#31A05F" />
-          <Text style={styles.permissionText}>Camera permission is required</Text>
-          <TouchableOpacity style={styles.button} onPress={() => setHasPermission(null)}>
-            <Text style={styles.buttonText}>Request Permission</Text>
+          <Text style={styles.permissionText}>Camera permission is required to take photos</Text>
+          <TouchableOpacity style={styles.button} onPress={requestPermission}>
+            <Text style={styles.buttonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -153,7 +103,7 @@ export default function ImageSearchScreen() {
   }
 
   // Show loading
-  if (hasPermission === null) {
+  if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
@@ -164,62 +114,7 @@ export default function ImageSearchScreen() {
     );
   }
 
-  // Show analysis results
-  if (capturedImage) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={resetCamera}>
-            <IconSymbol name="arrow.left" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>Crop Analysis</Text>
-          </View>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <ScrollView style={styles.resultContainer}>
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: capturedImage }} style={styles.capturedImage} />
-          </View>
-
-          {isAnalyzing ? (
-            <View style={styles.analysisContainer}>
-              <ActivityIndicator size="large" color="#31A05F" />
-              <Text style={styles.analyzingText}>Analyzing your crop image...</Text>
-              <Text style={styles.analyzingSubtext}>This may take a few moments</Text>
-            </View>
-          ) : analysisResult ? (
-            <View style={styles.resultCard}>
-              <View style={styles.diseaseHeader}>
-                <Text style={styles.diseaseTitle}>{analysisResult.disease}</Text>
-                <View style={styles.confidenceContainer}>
-                  <Text style={styles.confidenceText}>{analysisResult.confidence}% confident</Text>
-                </View>
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Recommended Treatment</Text>
-                <Text style={styles.sectionContent}>{analysisResult.treatment}</Text>
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Prevention Tips</Text>
-                <Text style={styles.sectionContent}>{analysisResult.prevention}</Text>
-              </View>
-
-              <TouchableOpacity style={styles.postButton} onPress={postToVoiceChat}>
-                <IconSymbol name="mic.fill" size={20} color="#FFFFFF" />
-                <Text style={styles.postButtonText}>Post to Voice Chat</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // Show camera view (default state)
+  // Show camera view
   return (
     <SafeAreaView style={styles.cameraScreen}>
       <View style={styles.header}>
@@ -227,7 +122,7 @@ export default function ImageSearchScreen() {
           <IconSymbol name="arrow.left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>Crop Disease Detection</Text>
+          <Text style={styles.logoText}>Take Photo</Text>
         </View>
         <View style={{ width: 24 }} />
       </View>
@@ -241,17 +136,9 @@ export default function ImageSearchScreen() {
             <Text style={styles.webCameraSubtext}>Please use the gallery button to select an image</Text>
           </View>
           
-          <View style={styles.instructionsContainer}>
-            <Text style={styles.instructionsTitle}>How to get the best results:</Text>
-            <Text style={styles.instructionItem}>• Select a clear image of affected crop leaves</Text>
-            <Text style={styles.instructionItem}>• Ensure good lighting in the image</Text>
-            <Text style={styles.instructionItem}>• Focus on affected leaves</Text>
-            <Text style={styles.instructionItem}>• Include multiple affected areas</Text>
-          </View>
-
           <View style={styles.webControlsContainer}>
             <TouchableOpacity style={styles.webGalleryButton} onPress={pickImageFromGallery}>
-              <IconSymbol name="photo.fill" size={24} color="#31A05F" />
+              <IconSymbol name="photo.fill" size={24} color="#FFFFFF" />
               <Text style={styles.webGalleryText}>Select from Gallery</Text>
             </TouchableOpacity>
           </View>
@@ -260,24 +147,24 @@ export default function ImageSearchScreen() {
         // Mobile camera view
         <>
           <View style={styles.cameraContainer}>
-            <Camera
+            <CameraView
               style={styles.camera}
-              ref={(ref) => setCameraRef(ref)}
-              type={Camera.Constants.Type.back}
+              ref={cameraRef}
+              facing='back'
             >
               <View style={styles.cameraOverlay}>
                 <View style={styles.viewfinder} />
-                <Text style={styles.instructionText}>Point camera at affected crop leaves</Text>
+                <Text style={styles.instructionText}>Point camera at your crop</Text>
               </View>
-            </Camera>
+            </CameraView>
           </View>
 
           <View style={styles.instructionsContainer}>
-            <Text style={styles.instructionsTitle}>How to get the best results:</Text>
+            <Text style={styles.instructionsTitle}>Tips for best results:</Text>
             <Text style={styles.instructionItem}>• Hold your phone steady</Text>
             <Text style={styles.instructionItem}>• Ensure good lighting</Text>
-            <Text style={styles.instructionItem}>• Focus on affected leaves</Text>
-            <Text style={styles.instructionItem}>• Include multiple affected areas</Text>
+            <Text style={styles.instructionItem}>• Focus on affected leaves or areas</Text>
+            <Text style={styles.instructionItem}>• Fill the frame with the crop</Text>
           </View>
 
           <View style={styles.controlsContainer}>
@@ -285,8 +172,16 @@ export default function ImageSearchScreen() {
               <IconSymbol name="photo.fill" size={24} color="#31A05F" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-              <View style={styles.captureButtonInner} />
+            <TouchableOpacity 
+              style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]} 
+              onPress={takePicture}
+              disabled={isCapturing}
+            >
+              {isCapturing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={styles.captureButtonInner} />
+              )}
             </TouchableOpacity>
 
             <View style={styles.galleryButton} />
@@ -450,114 +345,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  captureButtonDisabled: {
+    opacity: 0.7,
+  },
   captureButtonInner: {
     width: 60,
     height: 60,
     borderRadius: 30,
     backgroundColor: '#31A05F',
-  },
-  resultContainer: {
-    flex: 1,
-    backgroundColor: '#EFEFEF',
-  },
-  imageContainer: {
-    margin: 20,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  capturedImage: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
-  },
-  analysisContainer: {
-    alignItems: 'center',
-    padding: 40,
-  },
-  analyzingText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4B4B4B',
-    marginTop: 16,
-    fontFamily: 'System',
-  },
-  analyzingSubtext: {
-    fontSize: 14,
-    color: '#4B4B4B',
-    marginTop: 8,
-    fontFamily: 'System',
-  },
-  resultCard: {
-    backgroundColor: '#FFFFFF',
-    margin: 20,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  diseaseHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  diseaseTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4B4B4B',
-    flex: 1,
-    fontFamily: 'System',
-  },
-  confidenceContainer: {
-    backgroundColor: '#D3EDDF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  confidenceText: {
-    fontSize: 12,
-    color: '#31A05F',
-    fontWeight: '600',
-    fontFamily: 'System',
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4B4B4B',
-    marginBottom: 8,
-    fontFamily: 'System',
-  },
-  sectionContent: {
-    fontSize: 14,
-    color: '#4B4B4B',
-    lineHeight: 20,
-    fontFamily: 'System',
-  },
-  postButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#31A05F',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  postButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: 'System',
   },
   webContainer: {
     flex: 1,
@@ -568,7 +363,7 @@ const styles = StyleSheet.create({
   },
   webCameraPlaceholder: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 40,
   },
   webCameraText: {
     fontSize: 18,
@@ -581,6 +376,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B4B4B',
     marginTop: 5,
+    textAlign: 'center',
     fontFamily: 'System',
   },
   webControlsContainer: {
@@ -602,4 +398,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'System',
   },
-}); 
+});
