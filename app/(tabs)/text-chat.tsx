@@ -85,9 +85,13 @@ export default function TextChatScreen() {
 
       if (response.ok) {
         const responseData = await response.text();
+        // Extract message content from XML response
+        const messageMatch = responseData.match(/<Message>([^]*?)<\/Message>/);
+        const messageContent = messageMatch ? messageMatch[1].trim() : responseData;
+        
         const apiResponse: Message = {
           id: (Date.now() + 1).toString(),
-          text: responseData,
+          text: messageContent,
           isUser: false,
           timestamp: new Date(),
         };
