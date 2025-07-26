@@ -1,149 +1,52 @@
 import { useConversation } from '@/components/ConversationContext';
-import { GeminiLiveClient } from '@/components/GeminiLiveClient';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Camera } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
-// Replace with your backend server URL
-const WEBSOCKET_SERVER_URL = __DEV__ 
-  ? 'ws://localhost:8081' 
-  : 'https://kisan-ai-backend-iakguobsda-uc.a.run.app';
-
-interface AnalysisResult {
-  success: boolean;
-  analysis: {
-    disease: string;
-    confidence: string;
-    severity: string;
-    treatment: string;
-    prevention: string;
-    timeline: string;
-  };
-  recommendations: {
-    immediate_actions: string[];
-    treatments: string[];
-    preventive_measures: string[];
-    monitoring_schedule: string;
-  };
-  raw_analysis: string;
-  confidence_score: number;
-  timestamp: string;
-  error?: string;
-}
-
 export default function ImageSearchScreen() {
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [cameraRef, setCameraRef] = useState<Camera | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
-  
-  const geminiClientRef = useRef<GeminiLiveClient | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
   const { addMessage } = useConversation();
   const router = useRouter();
 
-  useEffect(() => {
-    initializePermissions();
-    initializeGeminiClient();
-    
-    return () => {
-      cleanup();
-    };
-  }, []);
-
-  const initializePermissions = async () => {
-    const cameraStatus = await Camera.requestCameraPermissionsAsync();
-    const mediaLibraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    setHasPermission(cameraStatus.status === 'granted' && mediaLibraryStatus.status === 'granted');
-  };
-
-  const initializeGeminiClient = async () => {
-    try {
-      setConnectionStatus('Connecting...');
-      
-      geminiClientRef.current = new GeminiLiveClient({
-        serverUrl: WEBSOCKET_SERVER_URL,
-        reconnectAttempts: 3,
-        reconnectDelay: 2000,
-      });
-
-      // Set up event listeners
-      setupGeminiClientListeners();
-
-      // Connect to backend
-      const connected = await geminiClientRef.current.connect();
-      if (connected) {
-        setConnectionStatus('Connected');
-        setIsConnected(true);
-      } else {
-        setConnectionStatus('Connection Failed');
-      }
-      
-    } catch (error) {
-      console.error('Error initializing Gemini client:', error);
-      setConnectionStatus('Error');
-    }
-  };
-
-  const setupGeminiClientListeners = () => {
-    if (!geminiClientRef.current) return;
-
-    const client = geminiClientRef.current;
-
-    client.on('connected', () => {
-      setIsConnected(true);
-      setConnectionStatus('Connected');
-    });
-
-    client.on('disconnected', () => {
-      setIsConnected(false);
-      setConnectionStatus('Disconnected');
-    });
-
-    client.on('imageAnalysis', (data: AnalysisResult) => {
-      setAnalysisResult(data);
-      setIsAnalyzing(false);
-      console.log('Received image analysis:', data);
-    });
-
-    client.on('error', (error: any) => {
-      console.error('Gemini client error:', error);
-      setIsAnalyzing(false);
-      Alert.alert('Analysis Error', error.message || 'Failed to analyze image');
-    });
-  };
-
   const takePicture = async () => {
-    if (cameraRef) {
-      try {
-        const photo = await cameraRef.takePictureAsync({
-          quality: 0.8,
-          base64: true,
-        });
-        setCapturedImage(photo.uri);
-        
-        if (photo.base64) {
-          await analyzeImage(photo.base64);
-        }
-      } catch (error) {
-        Alert.alert('Error', 'Failed to take picture');
-      }
+    if (!cameraRef.current || isCapturing) return;
+    
+    setIsCapturing(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: false,
+      });
+      
+      // Add image to conversation
+      addMessage({
+        id: Date.now().toString(),
+        text: 'I took a photo of my crop. Can you help me analyze it?',
+        isUser: true,
+        timestamp: new Date(),
+        imageUri: photo.uri,
+      });
+      
+      // Navigate to voice chat
+      router.push('/(tabs)/voice-chat');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to take picture');
+    } finally {
+      setIsCapturing(false);
     }
   };
 
@@ -154,100 +57,28 @@ export default function ImageSearchScreen() {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
-        base64: true,
       });
 
       if (!result.canceled && result.assets[0]) {
-        setCapturedImage(result.assets[0].uri);
+        // Add image to conversation
+        addMessage({
+          id: Date.now().toString(),
+          text: 'I uploaded a photo of my crop. Can you help me analyze it?',
+          isUser: true,
+          timestamp: new Date(),
+          imageUri: result.assets[0].uri,
+        });
         
-        if (result.assets[0].base64) {
-          await analyzeImage(result.assets[0].base64);
-        }
+        // Navigate to voice chat
+        router.push('/(tabs)/voice-chat');
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick image');
     }
   };
 
-  const analyzeImage = async (base64Image: string) => {
-    if (!isConnected || !geminiClientRef.current) {
-      Alert.alert('Not Connected', 'Please wait for connection to be established');
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setAnalysisResult(null);
-    
-    try {
-      // Send image to Gemini Live backend
-      geminiClientRef.current.sendImage(
-        base64Image, 
-        'Analyze this crop image for diseases or issues. Provide detailed identification, treatment recommendations, and preventive measures.'
-      );
-      
-    } catch (error) {
-      console.error('Error analyzing image:', error);
-      setIsAnalyzing(false);
-      Alert.alert('Analysis Error', 'Failed to send image for analysis');
-    }
-  };
-
-  const postToVoiceChat = () => {
-    if (analysisResult && capturedImage) {
-      // Add the image and analysis to the conversation
-      addMessage({
-        id: Date.now().toString(),
-        text: `I uploaded a crop image. Analysis: ${analysisResult.analysis.disease} (${analysisResult.analysis.confidence} confidence). ${analysisResult.analysis.treatment}`,
-        isUser: true,
-        timestamp: new Date(),
-        imageUri: capturedImage,
-      });
-
-      // Navigate to voice chat
-      router.push('/(tabs)/voice-chat');
-    }
-  };
-
-  const retryAnalysis = () => {
-    if (capturedImage) {
-      // Convert URI to base64 and retry analysis
-      analyzeImageFromUri(capturedImage);
-    }
-  };
-
-  const analyzeImageFromUri = async (uri: string) => {
-    try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
-        const base64data = reader.result as string;
-        const base64Image = base64data.split(',')[1]; // Remove data:image/... prefix
-        analyzeImage(base64Image);
-      };
-      
-      reader.readAsDataURL(blob);
-    } catch (error) {
-      console.error('Error converting image to base64:', error);
-      Alert.alert('Error', 'Failed to process image');
-    }
-  };
-
-  const resetCamera = () => {
-    setCapturedImage(null);
-    setAnalysisResult(null);
-    setIsAnalyzing(false);
-  };
-
-  const cleanup = () => {
-    if (geminiClientRef.current) {
-      geminiClientRef.current.disconnect();
-    }
-  };
-
   // Show permission request
-  if (hasPermission === false) {
+  if (permission && !permission.granted) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -262,9 +93,9 @@ export default function ImageSearchScreen() {
 
         <View style={styles.centered}>
           <IconSymbol name="camera.fill" size={64} color="#31A05F" />
-          <Text style={styles.permissionText}>Camera permission is required</Text>
-          <TouchableOpacity style={styles.button} onPress={initializePermissions}>
-            <Text style={styles.buttonText}>Request Permission</Text>
+          <Text style={styles.permissionText}>Camera permission is required to take photos</Text>
+          <TouchableOpacity style={styles.button} onPress={requestPermission}>
+            <Text style={styles.buttonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -272,7 +103,7 @@ export default function ImageSearchScreen() {
   }
 
   // Show loading
-  if (hasPermission === null) {
+  if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
@@ -283,111 +114,7 @@ export default function ImageSearchScreen() {
     );
   }
 
-  // Show analysis results
-  if (capturedImage) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={resetCamera}>
-            <IconSymbol name="arrow.left" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>Crop Analysis</Text>
-            <Text style={styles.connectionStatus}>{connectionStatus}</Text>
-          </View>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <ScrollView style={styles.resultContainer}>
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: capturedImage }} style={styles.capturedImage} />
-          </View>
-
-          {isAnalyzing ? (
-            <View style={styles.analysisContainer}>
-              <ActivityIndicator size="large" color="#31A05F" />
-              <Text style={styles.analyzingText}>
-                {isConnected ? 'Analyzing your crop image...' : 'Connecting to analysis service...'}
-              </Text>
-              <Text style={styles.analyzingSubtext}>This may take a few moments</Text>
-            </View>
-          ) : analysisResult ? (
-            <View style={styles.resultCard}>
-              {analysisResult.success ? (
-                <>
-                  <View style={styles.diseaseHeader}>
-                    <Text style={styles.diseaseTitle}>{analysisResult.analysis.disease}</Text>
-                    <View style={styles.confidenceContainer}>
-                      <Text style={styles.confidenceText}>
-                        {Math.round(analysisResult.confidence_score * 100)}% confident
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Severity</Text>
-                    <Text style={[
-                      styles.severityText,
-                      analysisResult.analysis.severity === 'severe' && styles.severityHigh,
-                      analysisResult.analysis.severity === 'moderate' && styles.severityMedium,
-                      analysisResult.analysis.severity === 'mild' && styles.severityLow,
-                    ]}>
-                      {analysisResult.analysis.severity.toUpperCase()}
-                    </Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Recommended Treatment</Text>
-                    <Text style={styles.sectionContent}>{analysisResult.analysis.treatment}</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Prevention Tips</Text>
-                    <Text style={styles.sectionContent}>{analysisResult.analysis.prevention}</Text>
-                  </View>
-
-                  {analysisResult.recommendations.immediate_actions.length > 0 && (
-                    <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>Immediate Actions</Text>
-                      {analysisResult.recommendations.immediate_actions.map((action, index) => (
-                        <Text key={index} style={styles.bulletPoint}>• {action}</Text>
-                      ))}
-                    </View>
-                  )}
-
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity style={styles.postButton} onPress={postToVoiceChat}>
-                      <IconSymbol name="mic.fill" size={20} color="#FFFFFF" />
-                      <Text style={styles.postButtonText}>Discuss with Voice Chat</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.retryButton} onPress={retryAnalysis}>
-                      <IconSymbol name="arrow.clockwise" size={20} color="#31A05F" />
-                      <Text style={styles.retryButtonText}>Re-analyze</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              ) : (
-                <View style={styles.errorContainer}>
-                  <IconSymbol name="exclamationmark.triangle" size={48} color="#FF6B6B" />
-                  <Text style={styles.errorTitle}>Analysis Failed</Text>
-                  <Text style={styles.errorMessage}>
-                    {analysisResult.error || 'Unable to analyze the image at this time'}
-                  </Text>
-                  <TouchableOpacity style={styles.retryButton} onPress={retryAnalysis}>
-                    <IconSymbol name="arrow.clockwise" size={20} color="#31A05F" />
-                    <Text style={styles.retryButtonText}>Try Again</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // Show camera view (default state)
+  // Show camera view
   return (
     <SafeAreaView style={styles.cameraScreen}>
       <View style={styles.header}>
@@ -395,8 +122,7 @@ export default function ImageSearchScreen() {
           <IconSymbol name="arrow.left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>Crop Disease Detection</Text>
-          <Text style={styles.connectionStatus}>{connectionStatus}</Text>
+          <Text style={styles.logoText}>Take Photo</Text>
         </View>
         <View style={{ width: 24 }} />
       </View>
@@ -410,24 +136,10 @@ export default function ImageSearchScreen() {
             <Text style={styles.webCameraSubtext}>Please use the gallery button to select an image</Text>
           </View>
           
-          <View style={styles.instructionsContainer}>
-            <Text style={styles.instructionsTitle}>How to get the best results:</Text>
-            <Text style={styles.instructionItem}>• Select a clear image of affected crop leaves</Text>
-            <Text style={styles.instructionItem}>• Ensure good lighting in the image</Text>
-            <Text style={styles.instructionItem}>• Focus on affected leaves</Text>
-            <Text style={styles.instructionItem}>• Include multiple affected areas</Text>
-          </View>
-
           <View style={styles.webControlsContainer}>
-            <TouchableOpacity 
-              style={[styles.webGalleryButton, !isConnected && styles.disabledButton]} 
-              onPress={pickImageFromGallery}
-              disabled={!isConnected}
-            >
-              <IconSymbol name="photo.fill" size={24} color={isConnected ? "#31A05F" : "#999"} />
-              <Text style={[styles.webGalleryText, !isConnected && styles.disabledText]}>
-                Select from Gallery
-              </Text>
+            <TouchableOpacity style={styles.webGalleryButton} onPress={pickImageFromGallery}>
+              <IconSymbol name="photo.fill" size={24} color="#FFFFFF" />
+              <Text style={styles.webGalleryText}>Select from Gallery</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -435,41 +147,41 @@ export default function ImageSearchScreen() {
         // Mobile camera view
         <>
           <View style={styles.cameraContainer}>
-            <Camera
+            <CameraView
               style={styles.camera}
-              ref={(ref) => setCameraRef(ref)}
-              type={Camera.Constants.Type.back}
+              ref={cameraRef}
+              facing='back'
             >
               <View style={styles.cameraOverlay}>
                 <View style={styles.viewfinder} />
-                <Text style={styles.instructionText}>Point camera at affected crop leaves</Text>
+                <Text style={styles.instructionText}>Point camera at your crop</Text>
               </View>
-            </Camera>
+            </CameraView>
           </View>
 
           <View style={styles.instructionsContainer}>
-            <Text style={styles.instructionsTitle}>How to get the best results:</Text>
+            <Text style={styles.instructionsTitle}>Tips for best results:</Text>
             <Text style={styles.instructionItem}>• Hold your phone steady</Text>
             <Text style={styles.instructionItem}>• Ensure good lighting</Text>
-            <Text style={styles.instructionItem}>• Focus on affected leaves</Text>
-            <Text style={styles.instructionItem}>• Include multiple affected areas</Text>
+            <Text style={styles.instructionItem}>• Focus on affected leaves or areas</Text>
+            <Text style={styles.instructionItem}>• Fill the frame with the crop</Text>
           </View>
 
           <View style={styles.controlsContainer}>
-            <TouchableOpacity 
-              style={[styles.galleryButton, !isConnected && styles.disabledButton]} 
-              onPress={pickImageFromGallery}
-              disabled={!isConnected}
-            >
-              <IconSymbol name="photo.fill" size={24} color={isConnected ? "#31A05F" : "#999"} />
+            <TouchableOpacity style={styles.galleryButton} onPress={pickImageFromGallery}>
+              <IconSymbol name="photo.fill" size={24} color="#31A05F" />
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.captureButton, !isConnected && styles.disabledButton]} 
+              style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]} 
               onPress={takePicture}
-              disabled={!isConnected}
+              disabled={isCapturing}
             >
-              <View style={styles.captureButtonInner} />
+              {isCapturing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={styles.captureButtonInner} />
+              )}
             </TouchableOpacity>
 
             <View style={styles.galleryButton} />
@@ -506,12 +218,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    fontFamily: 'System',
-  },
-  connectionStatus: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    opacity: 0.8,
     fontFamily: 'System',
   },
   centered: {
@@ -639,185 +345,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  captureButtonDisabled: {
+    opacity: 0.7,
+  },
   captureButtonInner: {
     width: 60,
     height: 60,
     borderRadius: 30,
     backgroundColor: '#31A05F',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  disabledText: {
-    color: '#999',
-  },
-  resultContainer: {
-    flex: 1,
-    backgroundColor: '#EFEFEF',
-  },
-  imageContainer: {
-    margin: 20,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  capturedImage: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
-  },
-  analysisContainer: {
-    alignItems: 'center',
-    padding: 40,
-  },
-  analyzingText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4B4B4B',
-    marginTop: 16,
-    textAlign: 'center',
-    fontFamily: 'System',
-  },
-  analyzingSubtext: {
-    fontSize: 14,
-    color: '#4B4B4B',
-    marginTop: 8,
-    fontFamily: 'System',
-  },
-  resultCard: {
-    backgroundColor: '#FFFFFF',
-    margin: 20,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  diseaseHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  diseaseTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4B4B4B',
-    flex: 1,
-    fontFamily: 'System',
-  },
-  confidenceContainer: {
-    backgroundColor: '#D3EDDF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  confidenceText: {
-    fontSize: 12,
-    color: '#31A05F',
-    fontWeight: '600',
-    fontFamily: 'System',
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4B4B4B',
-    marginBottom: 8,
-    fontFamily: 'System',
-  },
-  sectionContent: {
-    fontSize: 14,
-    color: '#4B4B4B',
-    lineHeight: 20,
-    fontFamily: 'System',
-  },
-  severityText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: 'System',
-  },
-  severityHigh: {
-    color: '#FF6B6B',
-  },
-  severityMedium: {
-    color: '#FFB74D',
-  },
-  severityLow: {
-    color: '#81C784',
-  },
-  bulletPoint: {
-    fontSize: 14,
-    color: '#4B4B4B',
-    lineHeight: 20,
-    marginBottom: 4,
-    fontFamily: 'System',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  postButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#31A05F',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  postButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: 'System',
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#31A05F',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  retryButtonText: {
-    color: '#31A05F',
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: 'System',
-  },
-  errorContainer: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF6B6B',
-    marginTop: 12,
-    marginBottom: 8,
-    fontFamily: 'System',
-  },
-  errorMessage: {
-    fontSize: 14,
-    color: '#4B4B4B',
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
-    fontFamily: 'System',
   },
   webContainer: {
     flex: 1,
@@ -828,7 +363,7 @@ const styles = StyleSheet.create({
   },
   webCameraPlaceholder: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 40,
   },
   webCameraText: {
     fontSize: 18,
@@ -841,6 +376,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B4B4B',
     marginTop: 5,
+    textAlign: 'center',
     fontFamily: 'System',
   },
   webControlsContainer: {
@@ -850,18 +386,16 @@ const styles = StyleSheet.create({
   webGalleryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#31A05F',
+    backgroundColor: '#31A05F',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
     gap: 8,
   },
   webGalleryText: {
-    color: '#31A05F',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
     fontFamily: 'System',
   },
-}); 
+});
