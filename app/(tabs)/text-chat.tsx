@@ -1,6 +1,8 @@
+import { useConnectivity } from '@/components/ConnectivityContext';
 import { Message, useConversation } from '@/components/ConversationContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Audio } from 'expo-av';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
@@ -22,7 +24,11 @@ export default function TextChatScreen() {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const { messages, addMessage } = useConversation();
+  const { isConnected, isInternetReachable } = useConnectivity();
   const router = useRouter();
+
+  // Check if we're in offline mode
+  const isOffline = !isConnected || !isInternetReachable;
 
   const playAudio = async (audioUri: string) => {
     try {
@@ -70,7 +76,52 @@ export default function TextChatScreen() {
     const userInput = inputText.trim();
     setInputText('');
 
-    // Make API call
+    // If offline, send SMS instead of API call
+    if (isOffline) {
+      try {
+        const phoneNumber = '+12184174439';
+        const message = encodeURIComponent(userInput);
+        const smsUrl = `sms:${phoneNumber}?body=${message}`;
+        
+        const canOpen = await Linking.canOpenURL(smsUrl);
+        if (canOpen) {
+          await Linking.openURL(smsUrl);
+          
+          // Add a confirmation message
+          const smsSentMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: `📱 Message sent via SMS. You'll receive a response in the SMS app.`,
+            isUser: false,
+            timestamp: new Date(),
+          };
+          addMessage(smsSentMessage);
+        } else {
+          // Fallback: just open SMS app with the number
+          const fallbackUrl = `sms:${phoneNumber}`;
+          await Linking.openURL(fallbackUrl);
+          
+          const fallbackMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: `📱 SMS app opened. Please manually type: "${userInput}" and send to ${phoneNumber}`,
+            isUser: false,
+            timestamp: new Date(),
+          };
+          addMessage(fallbackMessage);
+        }
+      } catch (error) {
+        console.error('SMS error:', error);
+        const errorResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          text: `Error: Failed to open SMS app. Please manually send "${userInput}"`,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        addMessage(errorResponse);
+      }
+      return;
+    }
+
+    // Online mode - Make API call
     try {
       const formData = new FormData();
       formData.append('From', '7619436585'); // Hardcoded phone number as requested
@@ -205,6 +256,12 @@ export default function TextChatScreen() {
         </TouchableOpacity>
         <View style={styles.logoContainer}>
           <Text style={styles.logoText}>Kisan Mitra</Text>
+          {isOffline && (
+            <View style={styles.offlineIndicator}>
+              <IconSymbol name="wifi.slash" size={12} color="#FFD700" />
+              <Text style={styles.offlineText}>SMS Mode</Text>
+            </View>
+          )}
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
@@ -238,7 +295,7 @@ export default function TextChatScreen() {
             style={styles.textInput}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Type your message..."
+            placeholder={isOffline ? "Type message to send via SMS..." : "Type your message..."}
             placeholderTextColor="#4B4B4B"
             multiline
             maxLength={500}
@@ -250,12 +307,22 @@ export default function TextChatScreen() {
             disabled={!inputText.trim()}
           >
             <IconSymbol 
-              name="paperplane.fill" 
+              name={isOffline ? "message.fill" : "paperplane.fill"}
               size={20} 
               color={inputText.trim() ? "#FFFFFF" : "#4B4B4B"} 
             />
           </TouchableOpacity>
         </View>
+        
+        {/* Offline SMS Info */}
+        {isOffline && (
+          <View style={styles.offlineInfoContainer}>
+            <IconSymbol name="info.circle.fill" size={16} color="#FF6B35" />
+            <Text style={styles.offlineInfoText}>
+              Messages will be sent via SMS
+            </Text>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -422,5 +489,37 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     fontFamily: 'System',
+  },
+  offlineIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  offlineText: {
+    fontSize: 10,
+    color: '#FFD700',
+    marginLeft: 4,
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  offlineInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#FFE0B2',
+  },
+  offlineInfoText: {
+    fontSize: 12,
+    color: '#E65100',
+    marginLeft: 8,
+    fontFamily: 'System',
+    flex: 1,
   },
 }); 
