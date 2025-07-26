@@ -33,6 +33,15 @@ export class GeminiLiveClient extends EventEmitter {
     this.reconnectDelay = config.reconnectDelay || 2000;
   }
 
+  private generateWebSocketKey(): string {
+    // Generate a random 16-byte string and base64 encode it for WebSocket key
+    const randomBytes = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      randomBytes[i] = Math.floor(Math.random() * 256);
+    }
+    return btoa(String.fromCharCode(...randomBytes));
+  }
+
   async connect(): Promise<boolean> {
     if (this.isConnecting || this.isConnected) {
       return true;
@@ -41,6 +50,10 @@ export class GeminiLiveClient extends EventEmitter {
     this.isConnecting = true;
     
     try {
+      // For React Native, we need to use the correct WebSocket constructor
+      // Add a small delay to ensure proper connection
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       this.ws = new WebSocket(this.config.serverUrl);
       
       this.ws.onopen = () => {
@@ -157,7 +170,7 @@ export class GeminiLiveClient extends EventEmitter {
 
   sendAudioChunk(audioData: string) {
     const message = {
-      type: 'audio_chunk',
+      type: 'audio',
       data: audioData,
       timestamp: Date.now()
     };

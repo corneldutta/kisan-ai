@@ -1,13 +1,14 @@
 import { Message, useConversation } from '@/components/ConversationContext';
 import { GeminiLiveClient } from '@/components/GeminiLiveClient';
-import { AudioRecorderLive } from '@/components/audio/AudioRecorderLive';
-import { AudioStreamerLive } from '@/components/audio/AudioStreamerLive';
+import { AudioRecorder, WebAudioRecorder } from '@/components/AudioRecorder';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -19,7 +20,7 @@ import {
 // Replace with your backend server URL
 const WEBSOCKET_SERVER_URL = __DEV__ 
   ? 'ws://localhost:8081' 
-  : 'https://kisan-ai-backend-iakguobsda-uc.a.run.app';
+  : 'wss://kisan-ai-backend-iakguobsda-uc.a.run.app';
 
 export default function VoiceChatScreen() {
   const [isConnected, setIsConnected] = useState(false);

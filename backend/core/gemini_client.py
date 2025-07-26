@@ -1,272 +1,115 @@
-import asyncio
-import json
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Gemini Live API client for Kisan AI
+"""
+
+import os
 import logging
-import base64
-from typing import Any, Dict, Optional, AsyncGenerator
-from dataclasses import dataclass
-from datetime import datetime
-import aiohttp
-import websockets
-from google import genai
-from google.genai.types import LiveConnectConfig, Modality
+from google.genai import Client
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class GeminiResponse:
-    type: str
-    data: Optional[bytes] = None
-    text: Optional[str] = None
-    is_final: bool = False
-    function_data: Optional[Dict[str, Any]] = None
-
-class GeminiSession:
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.session = None
-        self.is_connected = False
-        self.conversation_history = []
+async def create_gemini_session():
+    """Create a new Gemini Live API session."""
+    try:
+        # Get API key from environment or Secret Manager
+        api_key = os.getenv('GOOGLE_API_KEY')
         
-    async def connect(self) -> bool:
-        """Connect to Gemini Live API"""
-        try:
-            # Initialize Gemini client
-            client = genai.Client(
-                vertexai=True,
-                project=self.config['gcp']['project_id'],
-                location=self.config['gcp']['location']
-            )
-            
-            # Configure for Kisan AI use case
-            config = LiveConnectConfig(
-                response_modalities=[Modality.AUDIO, Modality.TEXT],
-                system_instruction=(
-                    "You are Kisan Mitra, an AI assistant for farmers in India. "
-                    "You provide expert advice on crop diseases, pest control, "
-                    "market prices, and government schemes for farmers. "
-                    "Always respond in a helpful, practical manner with actionable advice. "
-                    "If analyzing crop images, provide specific disease identification "
-                    "and treatment recommendations using locally available solutions."
-                ),
-            )
-            
-            # Connect to Live API
-            self.session = await client.aio.live.connect(
-                model="gemini-2.0-flash-live-001",
-                config=config
-            )
-            
-            self.is_connected = True
-            logger.info("Connected to Gemini Live API")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to connect to Gemini Live API: {e}")
-            return False
-    
-    async def send_audio_chunk(self, audio_data: bytes):
-        """Send audio chunk to Gemini Live API"""
-        if not self.is_connected or not self.session:
-            raise RuntimeError("Not connected to Gemini Live API")
+        # Also check for GEMINI_API_KEY (backup)
+        if not api_key:
+            api_key = os.getenv('GEMINI_API_KEY')
+            if api_key:
+                logger.info("Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.")
         
-        try:
-            # Convert audio to format expected by Gemini
-            audio_content = genai.types.Content(
-                role="user",
-                parts=[genai.types.Part(
-                    inline_data=genai.types.Blob(
-                        mime_type="audio/pcm;rate=16000",
-                        data=audio_data
-                    )
-                )]
-            )
-            
-            await self.session.send_client_content(
-                turns=audio_content
-            )
-            
-        except Exception as e:
-            logger.error(f"Error sending audio chunk: {e}")
-            raise
-    
-    async def send_image_with_text(self, image_data: str, prompt: str):
-        """Send image with text prompt to Gemini"""
-        if not self.is_connected or not self.session:
-            raise RuntimeError("Not connected to Gemini Live API")
-        
-        try:
-            # Decode base64 image
-            image_bytes = base64.b64decode(image_data)
-            
-            # Create multimodal content
-            content = genai.types.Content(
-                role="user",
-                parts=[
-                    genai.types.Part(text=prompt),
-                    genai.types.Part(
-                        inline_data=genai.types.Blob(
-                            mime_type="image/jpeg",
-                            data=image_bytes
-                        )
-                    )
-                ]
-            )
-            
-            await self.session.send_client_content(
-                turns=content,
-                turn_complete=True
-            )
-            
-        except Exception as e:
-            logger.error(f"Error sending image: {e}")
-            raise
-    
-    async def send_text(self, text: str):
-        """Send text message to Gemini"""
-        if not self.is_connected or not self.session:
-            raise RuntimeError("Not connected to Gemini Live API")
-        
-        try:
-            content = genai.types.Content(
-                role="user",
-                parts=[genai.types.Part(text=text)]
-            )
-            
-            await self.session.send_client_content(
-                turns=content,
-                turn_complete=True
-            )
-            
-        except Exception as e:
-            logger.error(f"Error sending text: {e}")
-            raise
-    
-    async def interrupt(self):
-        """Interrupt current Gemini response"""
-        if not self.is_connected or not self.session:
-            return
-        
-        try:
-            # Implementation depends on the specific Gemini Live API method
-            # This is a placeholder for the interrupt functionality
-            logger.info("Interrupting Gemini response")
-            
-        except Exception as e:
-            logger.error(f"Error interrupting: {e}")
-    
-    async def listen(self) -> AsyncGenerator[GeminiResponse, None]:
-        """Listen for responses from Gemini Live API"""
-        if not self.is_connected or not self.session:
-            raise RuntimeError("Not connected to Gemini Live API")
-        
-        try:
-            async for message in self.session.receive():
-                if message.server_content:
-                    # Handle server content (model responses)
-                    if message.server_content.model_turn:
-                        for part in message.server_content.model_turn.parts:
-                            if part.inline_data:
-                                # Audio response
-                                yield GeminiResponse(
-                                    type="audio",
-                                    data=part.inline_data.data
-                                )
-                            elif part.text:
-                                # Text response
-                                yield GeminiResponse(
-                                    type="text",
-                                    text=part.text
-                                )
-                    
-                    if message.server_content.turn_complete:
-                        yield GeminiResponse(type="turn_complete")
-                
-                # Handle other message types
-                if hasattr(message, 'input_transcription') and message.input_transcription:
-                    yield GeminiResponse(
-                        type="transcription",
-                        text=message.input_transcription.text,
-                        is_final=message.input_transcription.finished
-                    )
-                
-        except Exception as e:
-            logger.error(f"Error listening to Gemini responses: {e}")
-            raise
-    
-    async def close(self):
-        """Close the Gemini session"""
-        if self.session:
+        if not api_key:
+            # Try to get from Secret Manager if running in GCP
             try:
-                await self.session.close()
-                logger.info("Gemini session closed")
+                from google.cloud import secretmanager
+                client = secretmanager.SecretManagerServiceClient()
+                project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+                if project_id:
+                    name = f"projects/{project_id}/secrets/GOOGLE_API_KEY/versions/latest"
+                    response = client.access_secret_version(request={"name": name})
+                    api_key = response.payload.data.decode("UTF-8")
             except Exception as e:
-                logger.error(f"Error closing Gemini session: {e}")
+                logger.warning(f"Could not get API key from Secret Manager: {e}")
         
-        self.is_connected = False
-        self.session = None
+        if not api_key:
+            raise ValueError("No GOOGLE_API_KEY found in environment or Secret Manager")
+        
+        # Create client
+        client = Client(api_key=api_key)
+        
+        # Use the correct Live API models from official documentation
+        models_to_try = [
+            "gemini-2.5-flash-preview-native-audio-dialog",  # Native audio model (preferred)
+            "gemini-live-2.5-flash-preview",                 # Half-cascade model  
+            "gemini-2.0-flash-live-001"                      # Fallback Live model
+        ]
+        
+        session_manager = None
+        last_error = None
+        
+        for model_name in models_to_try:
+            try:
+                logger.info(f"Trying Live API model: {model_name}")
+                
+                # Correct configuration format based on official documentation
+                config = {
+                    "response_modalities": ["AUDIO"],  # Live API supports AUDIO output
+                    "system_instruction": """You are Kisan Mitra, an AI assistant specialized in crop disease detection and agricultural guidance for farmers.
 
-class GeminiClient:
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+Key capabilities:
+- Analyze crop images for diseases, pests, nutrient deficiencies, and other issues
+- Provide specific disease identification with confidence levels
+- Recommend treatment using locally available and affordable solutions
+- Suggest prevention strategies for future crop protection
+- Offer advice on farming techniques, crop care, and agricultural best practices
+- Share information about government schemes and subsidies for farmers
+
+Guidelines:
+- Be helpful, accurate, and provide actionable advice
+- Use simple language that farmers can understand
+- Prioritize cost-effective and locally available solutions
+- Always ask for clarification if the image or question is unclear
+- Provide step-by-step instructions for treatments
+- Include timing recommendations for interventions"""
+                }
+                
+                # Create live session - this returns an async context manager
+                session_manager = client.aio.live.connect(
+                    model=model_name,
+                    config=config
+                )
+                
+                logger.info(f"Successfully created session manager with model: {model_name}")
+                break
+                
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Model {model_name} failed: {e}")
+                continue
         
-    async def create_live_session(self) -> GeminiSession:
-        """Create a new Gemini Live session"""
-        session = GeminiSession(self.config)
+        if session_manager is None:
+            raise Exception(f"All Live API models failed. Last error: {last_error}")
         
-        if await session.connect():
-            return session
-        else:
-            raise RuntimeError("Failed to create Gemini Live session")
-    
-    async def analyze_image(self, image_data: str, prompt: str) -> Dict[str, Any]:
-        """Analyze image using Gemini (non-live API for quick analysis)"""
-        try:
-            # Initialize standard Gemini client for image analysis
-            client = genai.Client(
-                vertexai=True,
-                project=self.config['gcp']['project_id'],
-                location=self.config['gcp']['location']
-            )
-            
-            # Decode image
-            image_bytes = base64.b64decode(image_data)
-            
-            # Create content for analysis
-            content = genai.types.Content(
-                role="user",
-                parts=[
-                    genai.types.Part(text=prompt),
-                    genai.types.Part(
-                        inline_data=genai.types.Blob(
-                            mime_type="image/jpeg",
-                            data=image_bytes
-                        )
-                    )
-                ]
-            )
-            
-            # Generate response
-            model = client.models.generate_content(
-                model="gemini-2.0-flash-001",
-                contents=[content]
-            )
-            
-            response_text = ""
-            for chunk in model:
-                if chunk.text:
-                    response_text += chunk.text
-            
-            return {
-                "analysis": response_text,
-                "confidence": 0.85,  # Placeholder confidence score
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"Error analyzing image: {e}")
-            return {
-                "error": str(e),
-                "analysis": "Unable to analyze image at this time",
-                "confidence": 0.0,
-                "timestamp": datetime.now().isoformat()
-            } 
+        logger.info("Successfully created Gemini Live API session")
+        return session_manager
+        
+    except Exception as e:
+        logger.error(f"Failed to create Gemini Live API session: {e}")
+        raise
+ 
