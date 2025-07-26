@@ -1,0 +1,25 @@
+# Core server dependencies
+websockets>=13.0,<15.0
+# asyncio is built into Python 3.7+, no need to install separately
+
+# Google Cloud and AI dependencies - using latest stable versions
+google-genai>=1.27.0
+google-cloud-secret-manager==2.20.0
+google-cloud-aiplatform==1.54.0
+google-auth==2.29.0
+
+# Utility dependencies
+python-dotenv==1.0.1
+aiohttp==3.9.5
+ujson==5.10.0
+python-multipart==0.0.9
+
+# Image processing (optional but recommended)
+Pillow==10.3.0
+numpy==1.26.4
+
+# Development dependencies (comment out for production)
+pytest==8.1.1
+pytest-asyncio==0.23.6
+black==24.4.0
+flake8==7.0.0 

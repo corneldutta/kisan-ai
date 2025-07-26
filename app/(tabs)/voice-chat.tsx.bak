@@ -6,20 +6,20 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Image,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 
 // Replace with your backend server URL
 const WEBSOCKET_SERVER_URL = __DEV__ 
   ? 'ws://localhost:8081' 
-  : 'https://kisan-ai-backend-iakguobsda-uc.a.run.app';
+  : 'wss://your-backend-url.run.app';
 
 export default function VoiceChatScreen() {
   const [isConnected, setIsConnected] = useState(false);

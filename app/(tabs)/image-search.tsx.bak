@@ -6,22 +6,22 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 // Replace with your backend server URL
 const WEBSOCKET_SERVER_URL = __DEV__ 
   ? 'ws://localhost:8081' 
-  : 'https://kisan-ai-backend-iakguobsda-uc.a.run.app';
+  : 'wss://your-backend-url.run.app';
 
 interface AnalysisResult {
   success: boolean;
