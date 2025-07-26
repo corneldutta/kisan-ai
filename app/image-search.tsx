@@ -1,4 +1,4 @@
-import HomeScreen from '@/components/HomeScreen';
+import { ThemedText } from '@/components/ThemedText';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,8 +22,7 @@ interface AnalysisResult {
   prevention: string;
 }
 
-export default function MainScreen() {
-  const [showCamera, setShowCamera] = useState(false);
+export default function ImageSearchScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraRef, setCameraRef] = useState<Camera | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -37,26 +36,6 @@ export default function MainScreen() {
       setHasPermission(cameraStatus.status === 'granted' && mediaLibraryStatus.status === 'granted');
     })();
   }, []);
-
-  const handleMenuPress = () => {
-    Alert.alert('Menu', 'Opening side menu...');
-  };
-
-  const handleSearchPress = () => {
-    Alert.alert('Search', 'Opening search...');
-  };
-
-  const handleNotificationPress = () => {
-    Alert.alert('Notifications', 'Opening notifications...');
-  };
-
-  const handleCameraPress = () => {
-    if (hasPermission === false) {
-      Alert.alert('Permission Required', 'Camera permission is needed to use this feature');
-      return;
-    }
-    setShowCamera(true);
-  };
 
   const takePicture = async () => {
     if (cameraRef) {
@@ -94,7 +73,9 @@ export default function MainScreen() {
   const analyzeImage = (imageUri: string) => {
     setIsAnalyzing(true);
     
+    // Simulate AI analysis
     setTimeout(() => {
+      // Mock analysis results
       const mockResults: AnalysisResult[] = [
         {
           disease: 'Tomato Leaf Blight',
@@ -122,35 +103,59 @@ export default function MainScreen() {
     }, 3000);
   };
 
-  const resetToHome = () => {
-    setShowCamera(false);
+  const resetAnalysis = () => {
     setCapturedImage(null);
     setAnalysisResult(null);
     setIsAnalyzing(false);
   };
 
-  // Show analysis results
+  if (hasPermission === null) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Requesting permissions...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (hasPermission === false) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <IconSymbol name="camera.fill" size={64} color="#ccc" />
+          <Text style={styles.permissionText}>Camera permission is required</Text>
+          <TouchableOpacity style={styles.button} onPress={() => setHasPermission(null)}>
+            <Text style={styles.buttonText}>Request Permission</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (capturedImage) {
     return (
       <SafeAreaView style={styles.container}>
+        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={resetToHome}>
-            <IconSymbol name="arrow.left" size={24} color="#FFFFFF" />
+          <TouchableOpacity onPress={resetAnalysis}>
+            <IconSymbol name="arrow.left" size={24} color="#333" />
           </TouchableOpacity>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>Crop Analysis</Text>
-          </View>
+          <ThemedText style={styles.headerTitle}>Crop Analysis</ThemedText>
           <View style={{ width: 24 }} />
         </View>
 
         <ScrollView style={styles.resultContainer}>
+          {/* Captured Image */}
           <View style={styles.imageContainer}>
             <Image source={{ uri: capturedImage }} style={styles.capturedImage} />
           </View>
 
+          {/* Analysis Results */}
           {isAnalyzing ? (
             <View style={styles.analysisContainer}>
-              <ActivityIndicator size="large" color="#31A05F" />
+              <ActivityIndicator size="large" color="#007AFF" />
               <Text style={styles.analyzingText}>Analyzing your crop image...</Text>
               <Text style={styles.analyzingSubtext}>This may take a few moments</Text>
             </View>
@@ -174,7 +179,7 @@ export default function MainScreen() {
               </View>
 
               <TouchableOpacity style={styles.consultButton}>
-                <IconSymbol name="person.2.fill" size={20} color="#FFFFFF" />
+                <IconSymbol name="person.2.fill" size={20} color="#fff" />
                 <Text style={styles.consultButtonText}>Consult Expert</Text>
               </TouchableOpacity>
             </View>
@@ -184,82 +189,51 @@ export default function MainScreen() {
     );
   }
 
-  // Show camera view
-  if (showCamera && hasPermission) {
-    return (
-      <SafeAreaView style={styles.cameraScreen}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={resetToHome}>
-            <IconSymbol name="arrow.left" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>Crop Disease Detection</Text>
-          </View>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <View style={styles.cameraContainer}>
-          <Camera
-            style={styles.camera}
-            ref={(ref) => setCameraRef(ref)}
-            type={Camera.Constants.Type.back}
-          >
-            <View style={styles.cameraOverlay}>
-              <View style={styles.viewfinder} />
-              <Text style={styles.instructionText}>Point camera at affected crop leaves</Text>
-            </View>
-          </Camera>
-        </View>
-
-        <View style={styles.instructionsContainer}>
-          <Text style={styles.instructionsTitle}>How to get the best results:</Text>
-          <Text style={styles.instructionItem}>• Hold your phone steady</Text>
-          <Text style={styles.instructionItem}>• Ensure good lighting</Text>
-          <Text style={styles.instructionItem}>• Focus on affected leaves</Text>
-          <Text style={styles.instructionItem}>• Include multiple affected areas</Text>
-        </View>
-
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity style={styles.galleryButton} onPress={pickImageFromGallery}>
-            <IconSymbol name="photo.fill" size={24} color="#31A05F" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
-
-          <View style={styles.galleryButton} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show home dashboard
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-          <IconSymbol name="line.3.horizontal" size={24} color="#FFFFFF" />
+        <TouchableOpacity>
+          <IconSymbol name="arrow.left" size={24} color="#333" />
         </TouchableOpacity>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>Kisan Mitra</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
-            <IconSymbol name="magnifyingglass" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton} onPress={handleNotificationPress}>
-            <IconSymbol name="bell" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        <ThemedText style={styles.headerTitle}>Crop Disease Detection</ThemedText>
+        <View style={{ width: 24 }} />
       </View>
 
-      <HomeScreen />
+      {/* Camera View */}
+      <View style={styles.cameraContainer}>
+        <Camera
+          style={styles.camera}
+          ref={(ref) => setCameraRef(ref)}
+          type={Camera.Constants.Type.back}
+        >
+          <View style={styles.cameraOverlay}>
+            <View style={styles.viewfinder} />
+          </View>
+        </Camera>
+      </View>
 
-      {/* Floating Camera Button */}
-      <TouchableOpacity style={styles.floatingCameraButton} onPress={handleCameraPress}>
-        <IconSymbol name="camera.fill" size={28} color="#FFFFFF" />
-      </TouchableOpacity>
+      {/* Instructions */}
+      <View style={styles.instructionsContainer}>
+        <Text style={styles.instructionsTitle}>How to get the best results:</Text>
+        <Text style={styles.instructionItem}>• Hold your phone steady</Text>
+        <Text style={styles.instructionItem}>• Ensure good lighting</Text>
+        <Text style={styles.instructionItem}>• Focus on affected leaves</Text>
+        <Text style={styles.instructionItem}>• Include multiple affected areas</Text>
+      </View>
+
+      {/* Controls */}
+      <View style={styles.controlsContainer}>
+        <TouchableOpacity style={styles.galleryButton} onPress={pickImageFromGallery}>
+          <IconSymbol name="photo.fill" size={24} color="#007AFF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+          <View style={styles.captureButtonInner} />
+        </TouchableOpacity>
+
+        <View style={styles.galleryButton} />
+      </View>
     </SafeAreaView>
   );
 }
@@ -267,11 +241,35 @@ export default function MainScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EFEFEF',
+    backgroundColor: '#000',
   },
-  cameraScreen: {
+  centered: {
     flex: 1,
-    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 16,
+    color: '#333',
+  },
+  permissionText: {
+    marginTop: 16,
+    color: '#333',
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  button: {
+    marginTop: 20,
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
@@ -279,44 +277,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#31A05F',
-    paddingTop: 50,
+    backgroundColor: '#fff',
   },
-  menuButton: {
-    padding: 8,
-  },
-  logoContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  logoText: {
-    fontSize: 20,
+  headerTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    fontFamily: 'System',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerButton: {
-    padding: 8,
-  },
-  floatingCameraButton: {
-    position: 'absolute',
-    bottom: 100,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#31A05F',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
   },
   cameraContainer: {
     flex: 1,
@@ -335,46 +300,27 @@ const styles = StyleSheet.create({
   viewfinder: {
     width: 250,
     height: 250,
-    borderWidth: 3,
-    borderColor: '#31A05F',
+    borderWidth: 2,
+    borderColor: '#fff',
     borderRadius: 125,
     backgroundColor: 'transparent',
   },
-  instructionText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 20,
-    textAlign: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    fontFamily: 'System',
-  },
   instructionsContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
     padding: 16,
     margin: 20,
     borderRadius: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   instructionsTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 8,
-    color: '#4B4B4B',
-    fontFamily: 'System',
+    color: '#333',
   },
   instructionItem: {
     fontSize: 14,
-    color: '#4B4B4B',
+    color: '#666',
     marginBottom: 4,
-    fontFamily: 'System',
   },
   controlsContainer: {
     flexDirection: 'row',
@@ -382,53 +328,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 40,
     paddingBottom: 40,
-    backgroundColor: 'transparent',
   },
   galleryButton: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   captureButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   captureButtonInner: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#31A05F',
+    backgroundColor: '#007AFF',
   },
   resultContainer: {
     flex: 1,
-    backgroundColor: '#EFEFEF',
+    backgroundColor: '#f5f5f5',
   },
   imageContainer: {
     margin: 20,
     borderRadius: 12,
     overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   capturedImage: {
     width: '100%',
@@ -442,22 +372,20 @@ const styles = StyleSheet.create({
   analyzingText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#4B4B4B',
+    color: '#333',
     marginTop: 16,
-    fontFamily: 'System',
   },
   analyzingSubtext: {
     fontSize: 14,
-    color: '#4B4B4B',
+    color: '#666',
     marginTop: 8,
-    fontFamily: 'System',
   },
   resultCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
     margin: 20,
     padding: 20,
     borderRadius: 12,
-    shadowColor: '#000000',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -472,21 +400,19 @@ const styles = StyleSheet.create({
   diseaseTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#4B4B4B',
+    color: '#333',
     flex: 1,
-    fontFamily: 'System',
   },
   confidenceContainer: {
-    backgroundColor: '#D3EDDF',
+    backgroundColor: '#e8f5e8',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   confidenceText: {
     fontSize: 12,
-    color: '#31A05F',
+    color: '#28a745',
     fontWeight: '600',
-    fontFamily: 'System',
   },
   section: {
     marginBottom: 20,
@@ -494,29 +420,26 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#4B4B4B',
+    color: '#333',
     marginBottom: 8,
-    fontFamily: 'System',
   },
   sectionContent: {
     fontSize: 14,
-    color: '#4B4B4B',
+    color: '#666',
     lineHeight: 20,
-    fontFamily: 'System',
   },
   consultButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#31A05F',
+    backgroundColor: '#28a745',
     paddingVertical: 12,
     borderRadius: 8,
     gap: 8,
   },
   consultButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    fontFamily: 'System',
   },
-});
+}); 
