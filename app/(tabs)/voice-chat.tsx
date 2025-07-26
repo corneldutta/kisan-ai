@@ -1,20 +1,19 @@
+import { ConnectivityBanner } from '@/components/ConnectivityBanner';
+import { useConnectivity } from '@/components/ConnectivityContext';
 import { Message, useConversation } from '@/components/ConversationContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
 import { useRouter } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { useRef, useState } from 'react';
 import {
     Alert,
     Image,
-    Platform,
     SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 
 export default function VoiceChatScreen() {
@@ -26,8 +25,19 @@ export default function VoiceChatScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   const { messages, addMessage } = useConversation();
   const router = useRouter();
+  const { isConnected, isInternetReachable } = useConnectivity();
+  const isOnline = isConnected && isInternetReachable !== false;
 
   const startRecording = async () => {
+    if (!isOnline) {
+      Alert.alert(
+        'No Internet Connection',
+        'Voice recording requires an internet connection. Please check your connection and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
       // Clean up any existing recording
       if (recordingRef.current) {
@@ -90,57 +100,27 @@ export default function VoiceChatScreen() {
     if (!recordingRef.current) return;
 
     try {
-      setIsRecording(false);
-      setIsPaused(false);
-      
-      const currentRecording = recordingRef.current;
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
       recordingRef.current = null;
       setRecording(null);
-      
-      await currentRecording.stopAndUnloadAsync();
-      const uri = currentRecording.getURI();
-      
-      let audioUri: string | undefined = undefined;
-      if (uri) {
-        if (Platform.OS === 'web') {
-          // On web, use the URI directly (it's a blob/object URL)
-          audioUri = uri;
-        } else {
-          // On native, save to FileSystem
-          const timestamp = Date.now();
-          const audioFileName = `voice_message_${timestamp}.m4a`;
-          const audioDir = `${FileSystem.documentDirectory}audio/`;
-          const audioPath = `${audioDir}${audioFileName}`;
-          const dirInfo = await FileSystem.getInfoAsync(audioDir);
-          if (!dirInfo.exists) {
-            await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true });
-          }
-          await FileSystem.copyAsync({ from: uri, to: audioPath });
-          audioUri = audioPath;
-        }
+      setIsRecording(false);
+      setIsPaused(false);
 
-        // Add voice message to shared conversation
-        const newMessage: Message = {
+      if (uri) {
+        // Add voice message to conversation
+        addMessage({
           id: Date.now().toString(),
-          text: "Voice message recorded",
+          text: 'Voice message recorded',
           isUser: true,
           timestamp: new Date(),
           isVoice: true,
-          audioUri,
-        };
-        addMessage(newMessage);
+          audioUri: uri,
+        });
 
-        // Simulate AI response
-        setTimeout(() => {
-          const aiResponse: Message = {
-            id: (Date.now() + 1).toString(),
-            text: "I understand your concern about your crops. Based on what you've shared, I recommend checking for common diseases like blight or pest infestations. Would you like me to provide specific treatment recommendations?",
-            isUser: false,
-            timestamp: new Date(),
-          };
-          addMessage(aiResponse);
-          Speech.speak(aiResponse.text, { language: 'en' });
-        }, 2000);
+        // Here you would normally send the audio to your API
+        // For now, we'll just show a success message
+        Alert.alert('Success', 'Voice message recorded successfully');
       }
     } catch (err) {
       console.error('Failed to stop recording', err);
@@ -259,6 +239,7 @@ export default function VoiceChatScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <ConnectivityBanner />
       {/* Top Header Bar */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
@@ -284,35 +265,49 @@ export default function VoiceChatScreen() {
 
       {/* Voice Recording Controls */}
       <View style={styles.controlsContainer}>
-        <TouchableOpacity
-          style={[styles.controlButton, styles.pauseButton]}
-          onPress={isPaused ? resumeRecording : pauseRecording}
-          disabled={!isRecording}
-        >
-          <IconSymbol 
-            name={isPaused ? "play.fill" : "pause.fill"} 
-            size={24} 
-            color={isRecording ? "#31A05F" : "#4B4B4B"} 
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.recordButton, isRecording && styles.recordingButton]}
-          onPress={isRecording ? stopRecording : startRecording}
-        >
-          <IconSymbol 
-            name={isRecording ? "xmark" : "mic.fill"} 
-            size={32} 
-            color="#FFFFFF" 
-          />
-        </TouchableOpacity>
-
         <TouchableOpacity 
-          style={[styles.controlButton, styles.switchButton]} 
+          style={styles.textButton} 
           onPress={switchToTextMode}
         >
           <IconSymbol name="text.bubble" size={24} color="#31A05F" />
         </TouchableOpacity>
+        
+        <View style={styles.recordingControls}>
+          {!isRecording ? (
+            <TouchableOpacity
+              style={[
+                styles.recordButton,
+                !isOnline && styles.recordButtonDisabled
+              ]}
+              onPress={startRecording}
+              disabled={!isOnline}
+            >
+              <IconSymbol name="mic.fill" size={32} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.recordingActiveControls}>
+              <TouchableOpacity
+                style={styles.controlButton}
+                onPress={isPaused ? resumeRecording : pauseRecording}
+              >
+                <IconSymbol 
+                  name={isPaused ? "play.fill" : "pause.fill"} 
+                  size={24} 
+                  color="#31A05F" 
+                />
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.stopButton}
+                onPress={stopRecording}
+              >
+                <IconSymbol name="xmark" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        
+        <View style={{ width: 40 }} />
       </View>
     </SafeAreaView>
   );
@@ -358,7 +353,7 @@ const styles = StyleSheet.create({
   },
   chatContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   messageContainer: {
     marginBottom: 16,
@@ -399,16 +394,6 @@ const styles = StyleSheet.create({
   aiText: {
     color: '#4B4B4B',
   },
-  voiceIcon: {
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  messageImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
   timestamp: {
     fontSize: 12,
     color: '#4B4B4B',
@@ -418,9 +403,9 @@ const styles = StyleSheet.create({
   controlsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 32,
-    paddingVertical: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#D3EDDF',
@@ -430,54 +415,87 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  controlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  textButton: {
+    padding: 8,
+  },
+  recordingControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recordingActiveControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recordButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#31A05F',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
   },
-  pauseButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D3EDDF',
+  recordButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+    opacity: 0.6,
   },
-  recordButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#EF9920',
+  controlButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#31A05F',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  stopButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF6B35',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  recordingButton: {
-    backgroundColor: '#EF9920',
-    transform: [{ scale: 1.1 }],
+  voiceIcon: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
   },
-  switchButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D3EDDF',
+  messageImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginBottom: 8,
   },
   audioButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
-    alignSelf: 'flex-end',
+    backgroundColor: '#31A05F',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginTop: 8,
   },
   audioText: {
-    marginLeft: 4,
-    fontSize: 12,
+    marginLeft: 8,
+    fontSize: 14,
     fontFamily: 'System',
   },
 }); 

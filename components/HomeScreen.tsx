@@ -1,6 +1,9 @@
+import { ConnectivityBanner } from '@/components/ConnectivityBanner';
+import { useConnectivity } from '@/components/ConnectivityContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { navigateToScreen } from '@/utils/navigation';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +20,9 @@ interface ServiceData {
 }
 
 export default function HomeScreen() {
+  const { isConnected, isInternetReachable } = useConnectivity();
+  const isOnline = isConnected && isInternetReachable !== false;
+
   const services: ServiceData[] = [
     { 
       id: '1', 
@@ -42,30 +48,68 @@ export default function HomeScreen() {
   ];
 
   const handleServicePress = (service: ServiceData) => {
+    if (!isOnline) {
+      Alert.alert(
+        'No Internet Connection',
+        'This feature requires an internet connection. Please check your connection and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     navigateToScreen(service.title);
   };
 
   const renderServiceCard = (service: ServiceData) => (
     <TouchableOpacity
       key={service.id}
-      style={[styles.serviceCard, { borderLeftColor: service.color }]}
+      style={[
+        styles.serviceCard, 
+        { borderLeftColor: service.color },
+        !isOnline && styles.serviceCardDisabled
+      ]}
       onPress={() => handleServicePress(service)}
+      disabled={!isOnline}
     >
       <View style={styles.serviceContent}>
-        <View style={[styles.iconContainer, { backgroundColor: service.color }]}>
-          <IconSymbol name={service.icon} size={24} color="#FFFFFF" />
+        <View style={[
+          styles.iconContainer, 
+          { backgroundColor: service.color },
+          !isOnline && styles.iconContainerDisabled
+        ]}>
+          <IconSymbol 
+            name={service.icon} 
+            size={24} 
+            color={!isOnline ? "#CCCCCC" : "#FFFFFF"} 
+          />
         </View>
         <View style={styles.serviceText}>
-          <Text style={styles.serviceTitle}>{service.title}</Text>
-          <Text style={styles.serviceSubtitle}>{service.subtitle}</Text>
+          <Text style={[
+            styles.serviceTitle,
+            !isOnline && styles.serviceTitleDisabled
+          ]}>
+            {service.title}
+          </Text>
+          <Text style={[
+            styles.serviceSubtitle,
+            !isOnline && styles.serviceSubtitleDisabled
+          ]}>
+            {service.subtitle}
+          </Text>
         </View>
-        <IconSymbol name="chevron.right" size={20} color="#4B4B4B" />
+        <IconSymbol 
+          name="chevron.right" 
+          size={20} 
+          color={!isOnline ? "#CCCCCC" : "#4B4B4B"} 
+        />
       </View>
     </TouchableOpacity>
   );
 
   return (
     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Connectivity Banner */}
+      <ConnectivityBanner />
+      
       {/* Header Section */}
       <View style={styles.headerSection}>
         <Text style={styles.headerTitle}>ಇಂದು ನಾನು ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?</Text>
@@ -127,7 +171,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontFamily: 'System',
   },
-    servicesContainer: {
+  servicesContainer: {
     gap: 10,
   },
   serviceCard: {
@@ -141,6 +185,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  serviceCardDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#F5F5F5',
+  },
   serviceContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -153,6 +201,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 15,
   },
+  iconContainerDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
   serviceText: {
     flex: 1,
   },
@@ -162,10 +213,16 @@ const styles = StyleSheet.create({
     color: '#4B4B4B',
     fontFamily: 'System',
   },
+  serviceTitleDisabled: {
+    color: '#999999',
+  },
   serviceSubtitle: {
     fontSize: 14,
     color: '#4B4B4B',
     marginTop: 2,
     fontFamily: 'System',
+  },
+  serviceSubtitleDisabled: {
+    color: '#999999',
   },
 }); 

@@ -38,6 +38,7 @@ const MAPPING = {
   'leaf.fill': 'eco',
   'newspaper.fill': 'article',
   'drop.fill': 'water-drop',
+  'wifi.slash': 'wifi-off',
 } as IconMapping;
 
 /**
