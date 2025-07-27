@@ -22,6 +22,60 @@ export default function ImageSearchScreen() {
   const { addMessage } = useConversation();
   const router = useRouter();
 
+  const analyzeCropImage = async (imageBase64: string, imageUri: string) => {
+    try {
+      const response = await fetch('https://fastapi-service-666271187622.us-central1.run.app/api/crop-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: imageBase64,
+        }),
+      });
+
+      if (response.ok) {
+        const analysisResult = await response.json();
+        
+        // Concatenate disease and description for more informative response
+        let responseText = '';
+        if (analysisResult.disease && analysisResult.description) {
+          responseText = `${analysisResult.disease}\n\n${analysisResult.description}`;
+        } else if (analysisResult.description) {
+          responseText = analysisResult.description;
+        } else if (analysisResult.disease) {
+          responseText = analysisResult.disease;
+        } else {
+          responseText = 'Analysis completed, but no details were provided.';
+        }
+        
+        // Add AI response with the disease and description
+        addMessage({
+          id: (Date.now() + 1).toString(),
+          text: responseText,
+          isUser: false,
+          timestamp: new Date(),
+        });
+      } else {
+        // Add error message
+        addMessage({
+          id: (Date.now() + 1).toString(),
+          text: 'Sorry, I had trouble analyzing your image. Please try again.',
+          isUser: false,
+          timestamp: new Date(),
+        });
+      }
+    } catch (error) {
+      console.error('Crop analysis error:', error);
+      addMessage({
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I had trouble analyzing your image. Please check your internet connection and try again.',
+        isUser: false,
+        timestamp: new Date(),
+      });
+    }
+  };
+
   const takePicture = async () => {
     if (!cameraRef.current) return;
     
@@ -30,17 +84,23 @@ export default function ImageSearchScreen() {
         quality: 0.8,
         base64: true,
       });
-      // Add image to conversation and navigate to chat
+      
+      // Add user message with image and analysis request text
       addMessage({
         id: Date.now().toString(),
-        text: 'I took a photo of my crop. Can you help me analyze it?',
+        text: 'Can you please analyze this picture?',
         isUser: true,
         timestamp: new Date(),
         imageUri: photo.uri,
       });
       
-      // Navigate to voice chat
+      // Navigate to voice chat immediately
       router.push('/(tabs)/voice-chat');
+      
+      // Call the crop analysis API in the background
+      if (photo.base64) {
+        analyzeCropImage(photo.base64, photo.uri);
+      }
     } catch {
       Alert.alert('Error', 'Failed to take picture');
     }
@@ -57,17 +117,22 @@ export default function ImageSearchScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        // Add image to conversation
+        // Add user message with image and analysis request text
         addMessage({
           id: Date.now().toString(),
-          text: 'I uploaded a photo of my crop. Can you help me analyze it?',
+          text: 'Can you please analyze this picture?',
           isUser: true,
           timestamp: new Date(),
           imageUri: result.assets[0].uri,
         });
         
-        // Navigate to voice chat
+        // Navigate to voice chat immediately
         router.push('/(tabs)/voice-chat');
+        
+        // Call the crop analysis API in the background
+        if (result.assets[0].base64) {
+          analyzeCropImage(result.assets[0].base64, result.assets[0].uri);
+        }
       }
     } catch {
       Alert.alert('Error', 'Failed to pick image');
