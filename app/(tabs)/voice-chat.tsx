@@ -3,8 +3,9 @@ import { useConnectivity } from '@/components/ConnectivityContext';
 import { Message, useConversation } from '@/components/ConversationContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
     Alert,
     Image,
@@ -21,12 +22,16 @@ export default function VoiceChatScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { messages, addMessage } = useConversation();
   const router = useRouter();
   const { isConnected, isInternetReachable } = useConnectivity();
   const isOnline = isConnected && isInternetReachable !== false;
+  const MAX_RECORDING_TIME = 15; // 15 seconds
 
   const startRecording = async () => {
     if (!isOnline) {
@@ -68,6 +73,19 @@ export default function VoiceChatScreen() {
       setRecording(newRecording);
       setIsRecording(true);
       setIsPaused(false);
+      setRecordingTime(0);
+      
+      // Start timer
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1;
+          if (newTime >= MAX_RECORDING_TIME) {
+            stopRecording();
+            return MAX_RECORDING_TIME;
+          }
+          return newTime;
+        });
+      }, 1000);
     } catch (err) {
       console.error('Failed to start recording', err);
       Alert.alert('Error', 'Failed to start recording');
@@ -79,6 +97,11 @@ export default function VoiceChatScreen() {
       try {
         await recordingRef.current.pauseAsync();
         setIsPaused(true);
+        // Pause timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
       } catch (err) {
         console.error('Failed to pause recording', err);
       }
@@ -90,6 +113,17 @@ export default function VoiceChatScreen() {
       try {
         await recordingRef.current.startAsync();
         setIsPaused(false);
+        // Resume timer
+        timerRef.current = setInterval(() => {
+          setRecordingTime(prev => {
+            const newTime = prev + 1;
+            if (newTime >= MAX_RECORDING_TIME) {
+              stopRecording();
+              return MAX_RECORDING_TIME;
+            }
+            return newTime;
+          });
+        }, 1000);
       } catch (err) {
         console.error('Failed to resume recording', err);
       }
@@ -100,31 +134,55 @@ export default function VoiceChatScreen() {
     if (!recordingRef.current) return;
 
     try {
+      // Clear timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
       setRecording(null);
       setIsRecording(false);
       setIsPaused(false);
+      setRecordingTime(0);
 
       if (uri) {
-        // Add voice message to conversation
-        addMessage({
+        setIsProcessing(true);
+        
+        // Add user voice message to conversation
+        const userMessage: Message = {
           id: Date.now().toString(),
-          text: 'Voice message recorded',
+          text: '',
           isUser: true,
           timestamp: new Date(),
           isVoice: true,
           audioUri: uri,
-        });
+        };
+        addMessage(userMessage);
 
-        // Here you would normally send the audio to your API
-        // For now, we'll just show a success message
-        Alert.alert('Success', 'Voice message recorded successfully');
+        try {
+          // Send audio to API
+          await sendAudioToAPI(uri);
+        } catch (error) {
+          console.error('Error processing audio:', error);
+          // Add error message
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: "Couldn't process audio message. Try again.",
+            isUser: false,
+            timestamp: new Date(),
+          };
+          addMessage(errorMessage);
+        } finally {
+          setIsProcessing(false);
+        }
       }
     } catch (err) {
       console.error('Failed to stop recording', err);
       Alert.alert('Error', 'Failed to stop recording');
+      setIsProcessing(false);
     }
   };
 
@@ -159,6 +217,77 @@ export default function VoiceChatScreen() {
       setPlayingAudio(null);
     }
   };
+
+  const sendAudioToAPI = async (audioUri: string) => {
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      
+      // Create file object for upload
+      const audioFile = {
+        uri: audioUri,
+        type: 'audio/m4a',
+        name: 'voice_message.m4a',
+      } as any;
+      
+      formData.append('audio', audioFile);
+
+      const response = await fetch('https://fastapi-service-666271187622.us-central1.run.app/api/voice-note-audio', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        // Get the audio response as array buffer
+        const audioArrayBuffer = await response.arrayBuffer();
+        
+        // Convert to base64
+        const uint8Array = new Uint8Array(audioArrayBuffer);
+        let binary = '';
+        for (let i = 0; i < uint8Array.length; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Audio = btoa(binary);
+        
+        // Save the response audio to local file
+        const responseAudioPath = `${FileSystem.documentDirectory}response_${Date.now()}.wav`;
+        
+        await FileSystem.writeAsStringAsync(responseAudioPath, base64Audio, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Add AI response message with audio
+        const aiMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          text: '',
+          isUser: false,
+          timestamp: new Date(),
+          isVoice: true,
+          audioUri: responseAudioPath,
+        };
+        addMessage(aiMessage);
+        
+        // Auto-play the response after a short delay
+        setTimeout(() => {
+          playAudio(responseAudioPath);
+        }, 500);
+      } else {
+        throw new Error(`API Error: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('API call failed:', error);
+      throw error;
+    }
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
   const switchToTextMode = () => {
     router.push('/(tabs)/text-chat');
@@ -277,12 +406,16 @@ export default function VoiceChatScreen() {
             <TouchableOpacity
               style={[
                 styles.recordButton,
-                !isOnline && styles.recordButtonDisabled
+                (!isOnline || isProcessing) && styles.recordButtonDisabled
               ]}
               onPress={startRecording}
-              disabled={!isOnline}
+              disabled={!isOnline || isProcessing}
             >
-              <IconSymbol name="mic.fill" size={32} color="#FFFFFF" />
+              {isProcessing ? (
+                <IconSymbol name="hourglass" size={32} color="#FFFFFF" />
+              ) : (
+                <IconSymbol name="mic.fill" size={32} color="#FFFFFF" />
+              )}
             </TouchableOpacity>
           ) : (
             <View style={styles.recordingActiveControls}>
@@ -296,6 +429,15 @@ export default function VoiceChatScreen() {
                   color="#31A05F" 
                 />
               </TouchableOpacity>
+              
+              <View style={styles.timerContainer}>
+                <Text style={styles.timerText}>
+                  {recordingTime}s / {MAX_RECORDING_TIME}s
+                </Text>
+                {recordingTime >= MAX_RECORDING_TIME - 3 && (
+                  <Text style={styles.warningText}>Time limit reached!</Text>
+                )}
+              </View>
               
               <TouchableOpacity
                 style={styles.stopButton}
@@ -427,6 +569,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  timerContainer: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  timerText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#31A05F',
+    fontFamily: 'System',
+  },
+  warningText: {
+    fontSize: 10,
+    color: '#FF6B35',
+    fontFamily: 'System',
+    marginTop: 2,
   },
   recordButton: {
     width: 60,
