@@ -16,23 +16,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface MarketPriceResponse {
     crop: string;
-    location: {
-        district: string;
-        state: string;
+    district: string;
+    state: string;
+    data_source: string[];
+    current_date: string;
+    current_price: number;
+    yesterday_price: number;
+    price_change_amount: number;
+    percentage_change: number;
+    price_trend: string;
+    forecast: {
+        [key: string]: number;
     };
-    price_analysis: {
-        current_price: string;
-        yesterday_price: string;
-        price_change: string;
-        percentage_change: string;
-        trend: string;
-        forecast: {
-            [key: string]: string;
-        };
-        recommendation: string;
-        key_factor: string;
-        data_source: string;
-    };
+    recommendation: string;
+    key_factor: string;
+    thought_process: string;
 }
 
 interface Commodity {
@@ -102,6 +100,7 @@ export default function MarketAnalysisScreen() {
             }
 
             const data: MarketPriceResponse = await response.json();
+            console.log('Market data response:', JSON.stringify(data, null, 2));
             setMarketData(data);
         } catch (error) {
             console.error('Error loading market data:', error);
@@ -146,7 +145,7 @@ export default function MarketAnalysisScreen() {
         </TouchableOpacity>
     );
 
-    const renderForecastItem = (date: string, price: string) => (
+    const renderForecastItem = (date: string, price: number) => (
         <View key={date} style={styles.forecastItem}>
             <Text style={styles.forecastDate}>{new Date(date).toLocaleDateString()}</Text>
             <Text style={styles.forecastPrice}>₹{price}</Text>
@@ -267,26 +266,26 @@ export default function MarketAnalysisScreen() {
                             
                             <View style={styles.priceCard}>
                                 <View style={styles.priceHeader}>
-                                    <Text style={styles.marketName}>{selectedDistrict} Market</Text>
-                                    <View style={[styles.trendContainer, { backgroundColor: (parseFloat(marketData.price_analysis.percentage_change) >= 0 ? '#4CAF50' : '#f44336') + '20' }]}>
+                                    <Text style={styles.marketName}>{marketData.district} Market</Text>
+                                    <View style={[styles.trendContainer, { backgroundColor: (marketData.percentage_change >= 0 ? '#4CAF50' : '#f44336') + '20' }]}>
                                         <IconSymbol
-                                            name={parseFloat(marketData.price_analysis.percentage_change) >= 0 ? 'arrow.up' : 'arrow.down'}
+                                            name={marketData.percentage_change >= 0 ? 'arrow.up' : 'arrow.down'}
                                             size={16}
-                                            color={parseFloat(marketData.price_analysis.percentage_change) >= 0 ? '#4CAF50' : '#f44336'}
+                                            color={marketData.percentage_change >= 0 ? '#4CAF50' : '#f44336'}
                                         />
-                                        <Text style={[styles.changeText, { color: parseFloat(marketData.price_analysis.percentage_change) >= 0 ? '#4CAF50' : '#f44336' }]}>
-                                            {marketData.price_analysis.percentage_change}
+                                        <Text style={[styles.changeText, { color: marketData.percentage_change >= 0 ? '#4CAF50' : '#f44336' }]}>
+                                            {marketData.percentage_change.toFixed(2)}%
                                         </Text>
                                     </View>
                                 </View>
                                 <View style={styles.priceContent}>
-                                    <Text style={styles.priceAmount}>₹{marketData.price_analysis.current_price}</Text>
+                                    <Text style={styles.priceAmount}>₹{marketData.current_price}</Text>
                                     <Text style={styles.priceUnit}>/quintal</Text>
                                 </View>
                                 <View style={styles.priceComparison}>
                                     <Text style={styles.comparisonText}>
-                                        Yesterday: ₹{marketData.price_analysis.yesterday_price} 
-                                        ({parseInt(marketData.price_analysis.price_change) > 0 ? '+' : ''}{marketData.price_analysis.price_change})
+                                        Yesterday: ₹{marketData.yesterday_price} 
+                                        ({marketData.price_change_amount > 0 ? '+' : ''}{marketData.price_change_amount})
                                     </Text>
                                 </View>
                             </View>
@@ -303,9 +302,27 @@ export default function MarketAnalysisScreen() {
                             </View>
                             <View style={styles.forecastCard}>
                                 <View style={styles.forecastGrid}>
-                                    {Object.entries(marketData.price_analysis.forecast).map(([date, price]) => 
-                                        renderForecastItem(date, price)
-                                    )}
+                                    {(() => {
+                                        try {
+                                            if (marketData.forecast && typeof marketData.forecast === 'object') {
+                                                const forecastEntries = Object.entries(marketData.forecast);
+                                                if (forecastEntries.length > 0) {
+                                                    return forecastEntries.map(([date, price], index) => {
+                                                        const numericPrice = typeof price === 'number' ? price : Number(price);
+                                                        if (isNaN(numericPrice)) {
+                                                            console.warn(`Invalid price value for date ${date}:`, price);
+                                                            return null;
+                                                        }
+                                                        return renderForecastItem(date, numericPrice);
+                                                    }).filter(Boolean);
+                                                }
+                                            }
+                                            return <Text style={styles.errorText}>No forecast data available</Text>;
+                                        } catch (error) {
+                                            console.error('Error rendering forecast:', error);
+                                            return <Text style={styles.errorText}>Error loading forecast data</Text>;
+                                        }
+                                    })()}
                                 </View>
                             </View>
                         </View>
@@ -783,5 +800,153 @@ const styles = StyleSheet.create({
     dropdownItemText: {
         fontSize: 16,
         color: '#333',
+    },
+    // Recommendation Section Styles
+    recommendationSection: {
+        margin: 10,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 20,
+        elevation: 2,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    recommendationHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    recommendationTitleContainer: {
+        marginLeft: 10,
+        flex: 1,
+    },
+    recommendationCard: {
+        backgroundColor: '#f8f9fa',
+        padding: 15,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderLeftColor: '#31A05F',
+    },
+    recommendationContent: {
+        alignItems: 'center',
+    },
+    recommendationText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 5,
+    },
+    recommendationLabel: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+    },
+    // Key Factor Section Styles
+    keyFactorSection: {
+        margin: 10,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 20,
+        elevation: 2,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    keyFactorHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    keyFactorTitleContainer: {
+        marginLeft: 10,
+        flex: 1,
+    },
+    keyFactorCard: {
+        backgroundColor: '#fff3e0',
+        padding: 15,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderLeftColor: '#FFC107',
+    },
+    keyFactorText: {
+        fontSize: 14,
+        color: '#333',
+        lineHeight: 20,
+    },
+    // Data Source Section Styles
+    dataSourceSection: {
+        margin: 10,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 20,
+        elevation: 2,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    dataSourceHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    dataSourceTitleContainer: {
+        marginLeft: 10,
+        flex: 1,
+    },
+    dataSourceCard: {
+        backgroundColor: '#e3f2fd',
+        padding: 15,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderLeftColor: '#2196F3',
+    },
+    dataSourceText: {
+        fontSize: 12,
+        color: '#333',
+        lineHeight: 18,
+        marginBottom: 5,
+    },
+    // Thought Process Section Styles
+    thoughtProcessSection: {
+        margin: 10,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 20,
+        elevation: 2,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        marginBottom: 20,
+    },
+    thoughtProcessHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    thoughtProcessTitleContainer: {
+        marginLeft: 10,
+        flex: 1,
+    },
+    thoughtProcessCard: {
+        backgroundColor: '#f3e5f5',
+        padding: 15,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderLeftColor: '#9C27B0',
+    },
+    thoughtProcessText: {
+        fontSize: 14,
+        color: '#333',
+        lineHeight: 20,
+    },
+    errorText: {
+        fontSize: 14,
+        color: '#f44336',
+        textAlign: 'center',
+        padding: 20,
     },
 }); 
